@@ -30,7 +30,7 @@ std::wstring BuildTodayFolderName() {
     localtime_s(&localTime, &time);
     std::wstringstream stream;
     stream.fill(L'0');
-    stream << L"WiFiDrop "
+    stream << L"DROPME "
            << std::setw(4) << (localTime.tm_year + 1900)
            << L"-" << std::setw(2) << (localTime.tm_mon + 1)
            << L"-" << std::setw(2) << localTime.tm_mday;
@@ -46,7 +46,7 @@ std::filesystem::path DesktopFolders::EnsureIncomingFolder() {
 }
 
 std::filesystem::path DesktopFolders::EnsureLogFolder() {
-    const auto path = GetKnownFolderPath(FOLDERID_LocalAppData) / L"WiFiDrop" / L"logs";
+    const auto path = GetKnownFolderPath(FOLDERID_LocalAppData) / L"DROPME" / L"logs";
     std::filesystem::create_directories(path);
     return path;
 }

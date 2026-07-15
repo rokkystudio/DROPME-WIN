@@ -261,7 +261,7 @@ bool AndroidFsHttpClient::SendRequest(const std::wstring &method,
                                       const std::vector<std::wstring> &headers,
                                       HttpResponse &response,
                                       std::string *errorMessage) const {
-    WinHttpHandle session(WinHttpOpen(L"WiFiDrop-WinFsp/1.0",
+    WinHttpHandle session(WinHttpOpen(L"DROPME-WinFsp/1.0",
                                       WINHTTP_ACCESS_TYPE_NO_PROXY,
                                       WINHTTP_NO_PROXY_NAME,
                                       WINHTTP_NO_PROXY_BYPASS,
@@ -356,7 +356,7 @@ bool AndroidFsHttpClient::SendFileRequest(const std::wstring &method,
         return false;
     }
 
-    WinHttpHandle session(WinHttpOpen(L"WiFiDrop-WinFsp/1.0",
+    WinHttpHandle session(WinHttpOpen(L"DROPME-WinFsp/1.0",
                                       WINHTTP_ACCESS_TYPE_NO_PROXY,
                                       WINHTTP_NO_PROXY_NAME,
                                       WINHTTP_NO_PROXY_BYPASS,

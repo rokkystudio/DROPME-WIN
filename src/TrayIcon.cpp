@@ -9,7 +9,7 @@
 
 namespace {
 
-constexpr wchar_t kWindowClassName[] = L"WiFiDropTrayWindow";
+constexpr wchar_t kWindowClassName[] = L"DROPMETrayWindow";
 
 }  // namespace
 
@@ -137,7 +137,7 @@ bool TrayIcon::CreateWindowClassAndHandle(HINSTANCE instanceHandle) {
     windowHandle_ = CreateWindowExW(
         0,
         kWindowClassName,
-        L"WiFiDrop Tray Window",
+        L"DROPME Tray Window",
         WS_OVERLAPPED,
         0,
         0,

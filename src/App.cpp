@@ -157,7 +157,7 @@ int App::Run(HINSTANCE instanceHandle, int) {
 
 bool App::Initialize(HINSTANCE instanceHandle) {
     Log::Initialize();
-    Log::Info("WiFiDrop starting");
+    Log::Info("DROPME starting");
 #if WIFIDROP_ENABLE_WINFSP
     Log::Info("Drive backend: WinFsp");
 #else
@@ -172,14 +172,14 @@ bool App::Initialize(HINSTANCE instanceHandle) {
 
     if (!connectedDevicesWindow_->Initialize(instanceHandle)) {
         Log::Error("Failed to initialize connected devices window");
-        ShowMessage(L"WiFiDrop", L"Не удалось создать окно подключенных устройств.", MB_OK | MB_ICONERROR);
+        ShowMessage(L"DROPME", L"Не удалось создать окно подключенных устройств.", MB_OK | MB_ICONERROR);
         return false;
     }
 
     trayIcon_ = std::make_unique<TrayIcon>();
     if (!trayIcon_->Initialize(
             instanceHandle,
-            L"WiFiDrop",
+            L"DROPME",
             [this]() { OpenIncomingFolder(); },
             [this]() { ShowConnectedDevices(); },
             [this]() { ToggleAutostart(); },
@@ -189,13 +189,13 @@ bool App::Initialize(HINSTANCE instanceHandle) {
             [this]() { return BuildTrayDeviceMenuItems(); },
             [this](const std::string &clientId) { OpenClientDrive(clientId); })) {
         Log::Error("Failed to initialize tray icon");
-        ShowMessage(L"WiFiDrop", L"Не удалось создать иконку в системном трее.", MB_OK | MB_ICONERROR);
+        ShowMessage(L"DROPME", L"Не удалось создать иконку в системном трее.", MB_OK | MB_ICONERROR);
         return false;
     }
 
     if (!server_->Start()) {
         Log::Error("Failed to start server");
-        ShowMessage(L"WiFiDrop", L"Не удалось запустить локальный сервер WiFiDrop.", MB_OK | MB_ICONERROR);
+        ShowMessage(L"DROPME", L"Не удалось запустить локальный сервер DROPME.", MB_OK | MB_ICONERROR);
         return false;
     }
 
@@ -212,7 +212,7 @@ void App::Shutdown() {
     if (trayIcon_) {
         trayIcon_->Shutdown();
     }
-    Log::Info("WiFiDrop stopped");
+    Log::Info("DROPME stopped");
     Log::Shutdown();
 }
 
@@ -223,11 +223,11 @@ void App::OpenIncomingFolder() {
             ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
         if (result <= 32) {
             Log::Error("ShellExecuteW failed for incoming folder");
-            ShowMessage(L"WiFiDrop", L"Не удалось открыть папку входящих файлов.", MB_OK | MB_ICONERROR);
+            ShowMessage(L"DROPME", L"Не удалось открыть папку входящих файлов.", MB_OK | MB_ICONERROR);
         }
     } catch (const std::exception &exception) {
         Log::Error(std::string("Failed to open incoming folder: ") + exception.what());
-        ShowMessage(L"WiFiDrop", L"Не удалось подготовить папку входящих файлов.", MB_OK | MB_ICONERROR);
+        ShowMessage(L"DROPME", L"Не удалось подготовить папку входящих файлов.", MB_OK | MB_ICONERROR);
     }
 }
 
@@ -261,14 +261,14 @@ void App::OpenClientDrive(const std::string &clientId) {
 
         if (client.driveLetter.empty()) {
             if (!client.mountReady) {
-                ShowMessage(L"WiFiDrop",
+                ShowMessage(L"DROPME",
                             L"Android-устройство подключено, но файловый endpoint на нём пока не запущен.",
                             MB_OK | MB_ICONINFORMATION);
                 return;
             }
 
 #if WIFIDROP_ENABLE_WINFSP
-            ShowMessage(L"WiFiDrop",
+            ShowMessage(L"DROPME",
                         !client.mountError.empty()
                             ? Utf::Utf8ToWide(client.mountError)
                             : L"Не удалось смонтировать WinFsp-диск устройства.",
@@ -279,7 +279,7 @@ void App::OpenClientDrive(const std::string &clientId) {
             const std::wstring webDavPath = BuildClientOpenPath(client);
             const std::wstring browserUrl = BuildClientBrowserUrl(client);
             if (webDavPath.empty() && browserUrl.empty()) {
-                ShowMessage(L"WiFiDrop",
+                ShowMessage(L"DROPME",
                             L"Устройство подключено, но для него недоступен путь открытия.",
                             MB_OK | MB_ICONINFORMATION);
                 return;
@@ -291,18 +291,18 @@ void App::OpenClientDrive(const std::string &clientId) {
 
             if (!browserUrl.empty() && TryOpenPath(browserUrl, "client browser URL")) {
                 if (!client.mountError.empty()) {
-                    ShowMessage(L"WiFiDrop",
+                    ShowMessage(L"DROPME",
                                 Utf::Utf8ToWide(client.mountError),
                                 MB_OK | MB_ICONWARNING);
                 } else if (!webClientReady) {
-                    ShowMessage(L"WiFiDrop",
+                    ShowMessage(L"DROPME",
                                 L"WebClient не удалось запустить из приложения. Устройство открыто через браузерный fallback.",
                                 MB_OK | MB_ICONINFORMATION);
                 }
                 return;
             }
 
-            ShowMessage(L"WiFiDrop",
+            ShowMessage(L"DROPME",
                         !client.mountError.empty()
                             ? Utf::Utf8ToWide(client.mountError)
                             : webClientReady
@@ -315,12 +315,12 @@ void App::OpenClientDrive(const std::string &clientId) {
 
         const std::wstring rootPath = BuildClientOpenPath(client);
         if (!TryOpenPath(rootPath, "client drive")) {
-            ShowMessage(L"WiFiDrop", L"Не удалось открыть смонтированный диск устройства.", MB_OK | MB_ICONERROR);
+            ShowMessage(L"DROPME", L"Не удалось открыть смонтированный диск устройства.", MB_OK | MB_ICONERROR);
         }
         return;
     }
 
-    ShowMessage(L"WiFiDrop", L"Устройство уже отключено.", MB_OK | MB_ICONINFORMATION);
+    ShowMessage(L"DROPME", L"Устройство уже отключено.", MB_OK | MB_ICONINFORMATION);
 }
 
 void App::ToggleAutostart() {
@@ -328,7 +328,7 @@ void App::ToggleAutostart() {
     const bool targetState = !enabled;
     if (!autoStart_->SetEnabled(targetState)) {
         Log::Error("Failed to update autostart registry value");
-        ShowMessage(L"WiFiDrop", L"Не удалось изменить автозапуск.", MB_OK | MB_ICONERROR);
+        ShowMessage(L"DROPME", L"Не удалось изменить автозапуск.", MB_OK | MB_ICONERROR);
         return;
     }
 

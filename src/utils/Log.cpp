@@ -37,7 +37,7 @@ void Log::Initialize() {
         return;
     }
 
-    const auto logPath = DesktopFolders::EnsureLogFolder() / L"wifidrop.log";
+    const auto logPath = DesktopFolders::EnsureLogFolder() / L"dropme.log";
     g_logFile.open(logPath, std::ios::app | std::ios::binary);
 }
 

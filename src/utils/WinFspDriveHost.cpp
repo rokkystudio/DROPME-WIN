@@ -118,7 +118,7 @@ std::wstring CreateTempDirectoryPath(const std::string &clientId) {
         return {};
     }
     std::wstring directory = tempRoot;
-    directory += L"WiFiDrop-";
+    directory += L"DROPME-";
     directory += Utf::Utf8ToWide(clientId);
     return directory;
 }
@@ -731,7 +731,7 @@ std::optional<std::string> WinFspDriveHost::Mount(const AndroidClient &client, s
     auto context = std::make_unique<MountContext>(client);
     context->clientId = client.clientId;
     context->mountPoint = TrimColon(*mountPoint) + ":";
-    context->volumeName = client.deviceNameUtf8.empty() ? "WiFiDrop" : client.deviceNameUtf8;
+    context->volumeName = client.deviceNameUtf8.empty() ? "DROPME" : client.deviceNameUtf8;
     context->tempDirectory = CreateTempDirectoryPath(client.clientId);
 
     if (context->tempDirectory.empty()) {
@@ -748,9 +748,9 @@ std::optional<std::string> WinFspDriveHost::Mount(const AndroidClient &client, s
     }
 
     std::vector<char *> argv;
-    std::string arg0 = "wifidropfs";
+    std::string arg0 = "dropmefs";
     std::string mountArg = context->mountPoint;
-    std::string optionArg = "-ofsname=WiFiDrop,volname=WiFiDrop,uid=-1,gid=-1";
+    std::string optionArg = "-ofsname=DROPME,volname=DROPME,uid=-1,gid=-1";
     argv.push_back(arg0.data());
     argv.push_back(mountArg.data());
     argv.push_back(optionArg.data());

@@ -4,7 +4,7 @@
 
 namespace {
 
-constexpr wchar_t kConnectedDevicesWindowClassName[] = L"WiFiDropConnectedDevicesWindow";
+constexpr wchar_t kConnectedDevicesWindowClassName[] = L"DROPMEConnectedDevicesWindow";
 constexpr int kInitialWindowWidth = 720;
 constexpr int kInitialWindowHeight = 480;
 

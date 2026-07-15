@@ -4,7 +4,7 @@
 
 namespace {
 
-int RunWifiDrop(HINSTANCE instanceHandle, int showCommand) {
+int RunDropMe(HINSTANCE instanceHandle, int showCommand) {
     App app;
     return app.Run(instanceHandle, showCommand);
 }
@@ -12,9 +12,9 @@ int RunWifiDrop(HINSTANCE instanceHandle, int showCommand) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE instanceHandle, HINSTANCE, PWSTR, int showCommand) {
-    return RunWifiDrop(instanceHandle, showCommand);
+    return RunDropMe(instanceHandle, showCommand);
 }
 
 int main() {
-    return RunWifiDrop(GetModuleHandleW(nullptr), SW_HIDE);
+    return RunDropMe(GetModuleHandleW(nullptr), SW_HIDE);
 }
