@@ -1,5 +1,5 @@
 #include "resource.h"
 
-IDI_WIFIDROP_APP ICON "../res/wifidrop.ico"
-IDI_WIFIDROP_DEVICE ICON "../res/device.ico"
-IDI_WIFIDROP_EXIT ICON "../res/exit.ico"
+IDI_APP_ICON ICON "../res/appicon.ico"
+IDI_DEVICE_ICON ICON "../res/device.ico"
+IDI_EXIT_ICON ICON "../res/exit.ico"

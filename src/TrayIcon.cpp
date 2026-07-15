@@ -196,28 +196,28 @@ void TrayIcon::ShowNotification(const std::wstring &title, const std::wstring &m
 bool TrayIcon::LoadResources() {
     trayIconHandle_ = static_cast<HICON>(LoadImageW(
         instanceHandle_,
-        MAKEINTRESOURCEW(IDI_WIFIDROP_APP),
+        MAKEINTRESOURCEW(IDI_APP_ICON),
         IMAGE_ICON,
         GetSystemMetrics(SM_CXSMICON),
         GetSystemMetrics(SM_CYSMICON),
         LR_DEFAULTCOLOR));
     appIconHandle_ = static_cast<HICON>(LoadImageW(
         instanceHandle_,
-        MAKEINTRESOURCEW(IDI_WIFIDROP_APP),
+        MAKEINTRESOURCEW(IDI_APP_ICON),
         IMAGE_ICON,
         GetSystemMetrics(SM_CXICON),
         GetSystemMetrics(SM_CYICON),
         LR_DEFAULTCOLOR));
     deviceMenuIconHandle_ = static_cast<HICON>(LoadImageW(
         instanceHandle_,
-        MAKEINTRESOURCEW(IDI_WIFIDROP_DEVICE),
+        MAKEINTRESOURCEW(IDI_DEVICE_ICON),
         IMAGE_ICON,
         GetSystemMetrics(SM_CXSMICON),
         GetSystemMetrics(SM_CYSMICON),
         LR_DEFAULTCOLOR));
     exitMenuIconHandle_ = static_cast<HICON>(LoadImageW(
         instanceHandle_,
-        MAKEINTRESOURCEW(IDI_WIFIDROP_EXIT),
+        MAKEINTRESOURCEW(IDI_EXIT_ICON),
         IMAGE_ICON,
         GetSystemMetrics(SM_CXSMICON),
         GetSystemMetrics(SM_CYSMICON),
