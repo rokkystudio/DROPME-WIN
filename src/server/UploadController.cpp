@@ -14,6 +14,10 @@
 
 namespace {
 
+bool IsSupportedUploadPath(std::string_view path) {
+    return path == "/dropme/upload" || path == "/wifidrop/upload";
+}
+
 std::string JsonEscape(const std::string &value) {
     std::string escaped;
     escaped.reserve(value.size());
@@ -85,7 +89,7 @@ HttpResponse MakeJsonResponse(int statusCode, std::string reasonPhrase, std::str
 }  // namespace
 
 bool UploadController::HandleRequest(const HttpRequest &request, HttpResponse &response) const {
-    if (request.method != "PUT" || request.path != "/wifidrop/upload") {
+    if (request.method != "PUT" || !IsSupportedUploadPath(request.path)) {
         return false;
     }
 

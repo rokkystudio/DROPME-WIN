@@ -12,7 +12,8 @@
 
 namespace {
 
-constexpr char kDiscoveryProbe[] = "WIFIDROP_DISCOVER_V1";
+constexpr char kPrimaryDiscoveryProbe[] = "DROPME_DISCOVER_V1";
+constexpr char kLegacyDiscoveryProbe[] = "WIFIDROP_DISCOVER_V1";
 
 std::string JsonEscape(const std::string &value) {
     std::string escaped;
@@ -108,7 +109,7 @@ void DiscoveryResponder::RunLoop() {
         }
 
         const std::string payload(buffer.data(), received);
-        if (payload != kDiscoveryProbe) {
+        if (payload != kPrimaryDiscoveryProbe && payload != kLegacyDiscoveryProbe) {
             continue;
         }
 
@@ -117,7 +118,7 @@ void DiscoveryResponder::RunLoop() {
         Log::Info(std::string("UDP discovery request received from ") + remoteIp);
 
         const std::string response =
-            "{\"app\":\"WiFiDrop\",\"role\":\"windows-server\",\"protocolVersion\":" +
+            "{\"app\":\"DROPME\",\"role\":\"windows-server\",\"protocolVersion\":" +
             std::to_string(Protocol::kProtocolVersion) +
             ",\"deviceName\":\"" + JsonEscape(GetComputerNameUtf8()) +
             "\",\"tcpPort\":" + std::to_string(Protocol::kTcpPort) + "}";

@@ -2,7 +2,7 @@
 
 #include <string>
 
-/// Управляет значением автозапуска WiFiDrop в разделе HKCU\Software\Microsoft\Windows\CurrentVersion\Run.
+/// Управляет значением автозапуска DROPME в разделе HKCU\Software\Microsoft\Windows\CurrentVersion\Run.
 class AutoStart {
 public:
     /// Возвращает текущее состояние автозапуска.

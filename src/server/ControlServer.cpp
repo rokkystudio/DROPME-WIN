@@ -21,6 +21,9 @@
 
 namespace {
 
+constexpr std::string_view kPrimaryApiBase = "/dropme";
+constexpr std::string_view kLegacyApiBase = "/wifidrop";
+
 std::string GetComputerNameUtf8();
 
 std::string JsonEscape(const std::string &value) {
@@ -90,12 +93,30 @@ std::string MakeRegexForBoolField(const std::string &fieldName) {
 
 std::string BuildInfoJson() {
     std::ostringstream stream;
-    stream << "{\"app\":\"WiFiDrop\",\"role\":\"windows-server\",\"protocolVersion\":"
+    stream << "{\"app\":\"DROPME\",\"role\":\"windows-server\",\"protocolVersion\":"
            << Protocol::kProtocolVersion
            << ",\"deviceName\":\"" << JsonEscape(GetComputerNameUtf8())
            << "\",\"tcpPort\":" << Protocol::kTcpPort
            << ",\"udpPort\":" << Protocol::kDiscoveryPort << "}";
     return stream.str();
+}
+
+bool MatchesPath(std::string_view requestPath, std::string_view suffix) {
+    return requestPath == (std::string(kPrimaryApiBase) + std::string(suffix)) ||
+        requestPath == (std::string(kLegacyApiBase) + std::string(suffix));
+}
+
+std::string ExtractSessionClientId(std::string_view path) {
+    constexpr std::string_view kSessionSuffix = "/client/session/";
+    if (path.starts_with(kPrimaryApiBase)) {
+        const std::size_t offset = kPrimaryApiBase.size() + kSessionSuffix.size();
+        return path.size() > offset ? std::string(path.substr(offset)) : std::string();
+    }
+    if (path.starts_with(kLegacyApiBase)) {
+        const std::size_t offset = kLegacyApiBase.size() + kSessionSuffix.size();
+        return path.size() > offset ? std::string(path.substr(offset)) : std::string();
+    }
+    return {};
 }
 
 std::string GetComputerNameUtf8() {
@@ -186,17 +207,19 @@ ControlServer::ControlServer(ClientManager &clientManager) : clientManager_(clie
 }
 
 ControlRequestDisposition ControlServer::HandleRequest(const HttpRequest &request, SOCKET clientSocket, HttpResponse &response) {
-    if (request.method == "GET" && request.path == "/wifidrop/info") {
+    if (request.method == "GET" && MatchesPath(request.path, "/info")) {
         response = HandleInfoRequest();
         return ControlRequestDisposition::ResponseReady;
     }
 
-    if (request.method == "POST" && request.path == "/wifidrop/client/connect") {
+    if (request.method == "POST" && MatchesPath(request.path, "/client/connect")) {
         response = HandleConnectRequest(request);
         return ControlRequestDisposition::ResponseReady;
     }
 
-    if (request.method == "GET" && request.path.starts_with("/wifidrop/client/session/")) {
+    if (request.method == "GET" &&
+        (request.path.starts_with("/dropme/client/session/") ||
+            request.path.starts_with("/wifidrop/client/session/"))) {
         return HandleSessionRequest(request, clientSocket);
     }
 
@@ -270,7 +293,7 @@ HttpResponse ControlServer::HandleConnectRequest(const HttpRequest &request) {
 }
 
 ControlRequestDisposition ControlServer::HandleSessionRequest(const HttpRequest &request, SOCKET clientSocket) {
-    const std::string clientId = request.path.substr(std::string_view("/wifidrop/client/session/").size());
+    const std::string clientId = ExtractSessionClientId(request.path);
     if (clientId.empty()) {
         return ControlRequestDisposition::NotHandled;
     }

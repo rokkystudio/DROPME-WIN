@@ -2,7 +2,7 @@
 
 #include <string>
 
-/// Пишет текстовый лог WiFiDrop в %LOCALAPPDATA%\WiFiDrop\logs\wifidrop.log.
+/// Пишет текстовый лог DROPME в %LOCALAPPDATA%\DROPME\logs\dropme.log.
 class Log {
 public:
     /// Подготавливает директорию логов и файл журнала.

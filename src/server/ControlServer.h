@@ -12,7 +12,7 @@ enum class ControlRequestDisposition {
     ResponseSentDirectly,
 };
 
-/// Обрабатывает control endpoints WiFiDrop и управляет жизненным циклом Android-сессий.
+/// Обрабатывает control endpoints DROPME и управляет жизненным циклом Android-сессий.
 class ControlServer {
 public:
     /// Создаёт обработчик control-запросов с доступом к менеджеру Android-клиентов.
@@ -22,10 +22,10 @@ public:
     ControlRequestDisposition HandleRequest(const HttpRequest &request, SOCKET clientSocket, HttpResponse &response);
 
 private:
-    /// Формирует ответ для GET /wifidrop/info.
+    /// Формирует ответ для GET /dropme/info.
     HttpResponse HandleInfoRequest() const;
 
-    /// Формирует ответ для POST /wifidrop/client/connect.
+    /// Формирует ответ для POST /dropme/client/connect.
     HttpResponse HandleConnectRequest(const HttpRequest &request);
 
     /// Удерживает persistent session, пока Android не отключится.
