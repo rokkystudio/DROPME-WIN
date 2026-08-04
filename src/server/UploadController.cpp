@@ -9,10 +9,13 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <chrono>
 #include <unordered_map>
 #include <utility>
 
 namespace {
+
+constexpr auto kUploadBatchReuseTimeout = std::chrono::minutes(1);
 
 bool IsSupportedUploadPath(std::string_view path) {
     return path == "/dropme/upload" || path == "/wifidrop/upload";
@@ -88,6 +91,35 @@ HttpResponse MakeJsonResponse(int statusCode, std::string reasonPhrase, std::str
 
 }  // namespace
 
+std::filesystem::path UploadController::ResolveIncomingFolder(const HttpRequest &request) const {
+    const auto now = std::chrono::steady_clock::now();
+    const std::string batchKey = request.remoteIp.empty() ? std::string("<unknown>") : request.remoteIp;
+
+    std::lock_guard lock(uploadBatchesMutex_);
+    for (auto iterator = uploadBatches_.begin(); iterator != uploadBatches_.end();) {
+        if (now - iterator->second.lastActivity > kUploadBatchReuseTimeout) {
+            iterator = uploadBatches_.erase(iterator);
+        } else {
+            ++iterator;
+        }
+    }
+
+    const auto iterator = uploadBatches_.find(batchKey);
+    if (iterator != uploadBatches_.end()) {
+        iterator->second.lastActivity = now;
+        return iterator->second.folder;
+    }
+
+    UploadBatchState batchState{
+        .folder = DesktopFolders::EnsureIncomingFolderForTime(std::chrono::system_clock::now()),
+        .lastActivity = now,
+    };
+    const auto folder = batchState.folder;
+    uploadBatches_[batchKey] = std::move(batchState);
+    Log::Info("Upload batch started for " + batchKey + " in folder " + Utf::WideToUtf8(folder.native()));
+    return folder;
+}
+
 bool UploadController::HandleRequest(const HttpRequest &request, HttpResponse &response) const {
     if (request.method != "PUT" || !IsSupportedUploadPath(request.path)) {
         return false;
@@ -114,7 +146,7 @@ bool UploadController::HandleRequest(const HttpRequest &request, HttpResponse &r
     }
 
     try {
-        const std::filesystem::path folder = DesktopFolders::EnsureIncomingFolder();
+        const std::filesystem::path folder = ResolveIncomingFolder(request);
         const std::filesystem::path filePath = FileName::MakeUniquePath(folder, validationResult.sanitizedName);
 
         std::ofstream output(filePath, std::ios::binary);

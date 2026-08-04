@@ -23,9 +23,8 @@ std::filesystem::path GetKnownFolderPath(REFKNOWNFOLDERID folderId) {
     return path;
 }
 
-std::wstring BuildTodayFolderName() {
-    const auto now = std::chrono::system_clock::now();
-    const std::time_t time = std::chrono::system_clock::to_time_t(now);
+std::wstring BuildFolderName(std::chrono::system_clock::time_point timePoint) {
+    const std::time_t time = std::chrono::system_clock::to_time_t(timePoint);
     std::tm localTime{};
     localtime_s(&localTime, &time);
     std::wstringstream stream;
@@ -40,7 +39,11 @@ std::wstring BuildTodayFolderName() {
 }  // namespace
 
 std::filesystem::path DesktopFolders::EnsureIncomingFolder() {
-    const auto path = GetKnownFolderPath(FOLDERID_Desktop) / BuildTodayFolderName();
+    return EnsureIncomingFolderForTime(std::chrono::system_clock::now());
+}
+
+std::filesystem::path DesktopFolders::EnsureIncomingFolderForTime(std::chrono::system_clock::time_point timePoint) {
+    const auto path = GetKnownFolderPath(FOLDERID_Desktop) / BuildFolderName(timePoint);
     std::filesystem::create_directories(path);
     return path;
 }
