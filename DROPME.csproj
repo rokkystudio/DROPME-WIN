@@ -1,0 +1,69 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net5.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>DROPME</RootNamespace>
+    <AssemblyName>DROPME</AssemblyName>
+    <ApplicationIcon>res\appicon.ico</ApplicationIcon>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\FlagsPack\CountryFlags.cs"
+             Link="Shared\FlagsPack\CountryFlags.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoThemePalette.cs"
+             Link="Shared\NeoUI\NeoThemePalette.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoAssetPaths.cs"
+             Link="Shared\NeoUI\NeoAssetPaths.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoAssetService.cs"
+             Link="Shared\NeoUI\NeoAssetService.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoTrayMenuStyle.cs"
+             Link="Shared\NeoUI\NeoTrayMenuStyle.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoTrayMenuBuilder.cs"
+             Link="Shared\NeoUI\NeoTrayMenuBuilder.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoTrayIconInteraction.cs"
+             Link="Shared\NeoUI\NeoTrayIconInteraction.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoContextMenu.cs"
+             Link="Shared\NeoUI\NeoContextMenu.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoLanguageMenuBuilder.cs"
+             Link="Shared\NeoUI\NeoLanguageMenuBuilder.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoColorMenuBuilder.cs"
+             Link="Shared\NeoUI\NeoColorMenuBuilder.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoTitleBar.xaml.cs"
+             Link="Shared\NeoUI\NeoTitleBar.xaml.cs">
+      <DependentUpon>NeoTitleBar.xaml</DependentUpon>
+    </Compile>
+    <Page Include="..\Shared\NeoUI\NeoTitleBar.xaml"
+          Link="Shared\NeoUI\NeoTitleBar.xaml" />
+    <Page Include="..\Shared\NeoUI\NeoMenuStyles.xaml"
+          Link="Shared\NeoUI\NeoMenuStyles.xaml" />
+    <Page Include="..\Shared\NeoUI\NeoWindowStyles.xaml"
+          Link="Shared\NeoUI\NeoWindowStyles.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="..\Shared\FlagsPack\Assets\**\*.png">
+      <Link>Shared\FlagsPack\Assets\%(Filename)%(Extension)</Link>
+    </Resource>
+    <Resource Include="..\Shared\NeoUI\Assets\**\*.png">
+      <Link>Shared\NeoUI\Assets\%(Filename)%(Extension)</Link>
+    </Resource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ApplicationDefinition Include="src\App.xaml" />
+    <Page Remove="src\App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="res\appicon.ico" />
+    <Resource Include="res\device.ico" />
+    <Resource Include="res\exit.ico" />
+  </ItemGroup>
+</Project>

@@ -1,5 +1,0 @@
-#include "resource.h"
-
-IDI_APP_ICON ICON "../res/appicon.ico"
-IDI_DEVICE_ICON ICON "../res/device.ico"
-IDI_EXIT_ICON ICON "../res/exit.ico"
