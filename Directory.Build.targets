@@ -1,0 +1,16 @@
+<Project>
+  <Target Name="PublishSingleFileAfterReleaseBuild"
+          AfterTargets="Build"
+          Condition="'$(MSBuildProjectExtension)' == '.csproj'
+                  and '$(Configuration)' == 'Release'
+                  and ('$(Platform)' == 'x64' or '$(Platform)' == 'x86')
+                  and '$(DesignTimeBuild)' != 'true'
+                  and '$(IsTemporaryTargetAssembly)' != 'true'
+                  and '$(SkipAutoPublishAfterBuild)' != 'true'">
+    <Message Text="Publishing single-file $(MSBuildProjectName).exe for $(Platform)..." Importance="high" />
+    <Exec Command="dotnet publish &quot;$(MSBuildProjectFullPath)&quot; -c &quot;$(Configuration)&quot; -r &quot;$(RuntimeIdentifier)&quot; --self-contained true --no-build --no-restore -p:Platform=$(Platform) -p:SkipAutoPublishAfterBuild=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false" />
+    <Error Condition="!Exists('$(PublishDir)$(TargetName).exe')"
+           Text="Single-file publish did not create $(PublishDir)$(TargetName).exe." />
+    <Message Text="Single-file EXE: $(PublishDir)$(TargetName).exe" Importance="high" />
+  </Target>
+</Project>

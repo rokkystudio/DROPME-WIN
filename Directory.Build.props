@@ -1,8 +1,8 @@
 <Project>
   <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
     <BaseOutputPath>$(MSBuildProjectDirectory)\Build\bin\</BaseOutputPath>
-    <BaseIntermediateOutputPath>$(MSBuildProjectDirectory)\Build\obj\$(Platform)\</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+    <BaseIntermediateOutputPath>$(MSBuildProjectDirectory)\Build\obj\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(MSBuildProjectDirectory)\Build\obj\</MSBuildProjectExtensionsPath>
     <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**;Build\**</DefaultItemExcludes>
   </PropertyGroup>
 </Project>

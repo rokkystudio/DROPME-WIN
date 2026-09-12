@@ -10,6 +10,7 @@
     <AssemblyName>DROPME</AssemblyName>
     <ApplicationIcon>Resources\appicon.ico</ApplicationIcon>
     <Platforms>x64;x86</Platforms>
+    <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
     <OutputPath>Build\bin\$(Platform)\$(Configuration)\</OutputPath>
     <IntermediateOutputPath>Build\obj\$(Platform)\$(Configuration)\</IntermediateOutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
