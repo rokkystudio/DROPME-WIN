@@ -24,7 +24,7 @@
             <neo:NeoTitleBar x:Name="TitleBar"
                              Grid.Row="0"
                              TitleText="DROPME"
-                             IconSource="/res/appicon.ico"
+                             IconSource="/Resources/appicon.ico"
                              LanguageClick="LanguageButton_OnClick"
                              ThemeClick="ThemeButton_OnClick"
                              CloseClick="CloseButton_OnClick" />

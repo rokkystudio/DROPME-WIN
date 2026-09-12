@@ -8,7 +8,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>DROPME</RootNamespace>
     <AssemblyName>DROPME</AssemblyName>
-    <ApplicationIcon>res\appicon.ico</ApplicationIcon>
+    <ApplicationIcon>Resources\appicon.ico</ApplicationIcon>
     <PlatformTarget>x64</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
@@ -57,13 +57,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ApplicationDefinition Include="src\App.xaml" />
-    <Page Remove="src\App.xaml" />
+    <ApplicationDefinition Include="Sources\App.xaml" />
+    <Page Remove="Sources\App.xaml" />
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="res\appicon.ico" />
-    <Resource Include="res\device.ico" />
-    <Resource Include="res\exit.ico" />
+    <Resource Include="Resources\appicon.ico" />
+    <Resource Include="Resources\device.ico" />
+    <Resource Include="Resources\exit.ico" />
   </ItemGroup>
 </Project>
