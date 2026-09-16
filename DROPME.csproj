@@ -65,6 +65,12 @@
              Link="Shared\NeoUI\NeoLanguageMenuBuilder.cs" />
     <Compile Include="..\Shared\NeoUI\NeoColorMenuBuilder.cs"
              Link="Shared\NeoUI\NeoColorMenuBuilder.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoMessageBox.xaml.cs"
+             Link="Shared\NeoUI\NeoMessageBox.xaml.cs">
+      <DependentUpon>NeoMessageBox.xaml</DependentUpon>
+    </Compile>
+    <Page Include="..\Shared\NeoUI\NeoMessageBox.xaml"
+          Link="Shared\NeoUI\NeoMessageBox.xaml" />
     <Compile Include="..\Shared\NeoUI\NeoTitleBar.xaml.cs"
              Link="Shared\NeoUI\NeoTitleBar.xaml.cs">
       <DependentUpon>NeoTitleBar.xaml</DependentUpon>
