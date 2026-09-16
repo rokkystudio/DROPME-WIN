@@ -16,6 +16,9 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <Version>1.0.18</Version>
+    <AssemblyVersion>1.0.18.0</AssemblyVersion>
+    <FileVersion>1.0.18.0</FileVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Platform)' == 'x64'">

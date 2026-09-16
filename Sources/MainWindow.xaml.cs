@@ -39,6 +39,7 @@ namespace DROPME
             autoStart_ = autoStart;
 
             InitializeComponent();
+            TitleBar.VersionText = ApplicationInfo.VersionText;
 
             notifyIcon_ = new Forms.NotifyIcon
             {
