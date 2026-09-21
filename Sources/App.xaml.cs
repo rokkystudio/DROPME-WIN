@@ -24,8 +24,7 @@ namespace DROPME
 
             Log.Initialize();
             Log.Info("DROPME starting");
-            Log.Info("Drive backend: WebDAV redirector");
-            WebClientService.EnsureRunning();
+            Log.Info("Drive backend priority: WinFsp, then WebClient fallback, then browser");
 
             clientManager_ = new ClientManager();
             server_ = new WifiDropServer(clientManager_);

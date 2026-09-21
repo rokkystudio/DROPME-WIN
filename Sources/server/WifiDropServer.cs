@@ -116,7 +116,7 @@ namespace DROPME.Server
 
             foreach (AndroidClient client in clientManager_.Clear())
             {
-                WebDavDriveMapper.Unmount(client);
+                DriveMountService.Unmount(client);
             }
         }
 
@@ -222,7 +222,7 @@ namespace DROPME.Server
                 Thread.Sleep(Protocol.ControlHeartbeatInterval);
                 foreach (AndroidClient client in clientManager_.RemoveInactive(Protocol.ControlDisconnectTimeout))
                 {
-                    WebDavDriveMapper.Unmount(client);
+                    DriveMountService.Unmount(client);
                     Log.Info("Client disconnected by timeout: " + client.ClientId);
                 }
             }

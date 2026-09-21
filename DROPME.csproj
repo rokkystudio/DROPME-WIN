@@ -1,7 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net5.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
@@ -9,8 +9,8 @@
     <RootNamespace>DROPME</RootNamespace>
     <AssemblyName>DROPME</AssemblyName>
     <ApplicationIcon>Resources\appicon.ico</ApplicationIcon>
-    <Platforms>x64;x86</Platforms>
-    <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <OutputPath>Build\bin\$(Platform)\$(Configuration)\</OutputPath>
     <IntermediateOutputPath>Build\obj\$(Platform)\$(Configuration)\</IntermediateOutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -26,11 +26,6 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Platform)' == 'x86'">
-    <PlatformTarget>x86</PlatformTarget>
-    <Prefer32Bit>true</Prefer32Bit>
-  </PropertyGroup>
-
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
@@ -43,47 +38,27 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(Platform)' == 'x86'">
-    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
-  </PropertyGroup>
-
   <ItemGroup>
-    <Compile Include="..\Shared\FlagsPack\CountryFlags.cs"
-             Link="Shared\FlagsPack\CountryFlags.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoThemePalette.cs"
-             Link="Shared\NeoUI\NeoThemePalette.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoAssetPaths.cs"
-             Link="Shared\NeoUI\NeoAssetPaths.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoAssetService.cs"
-             Link="Shared\NeoUI\NeoAssetService.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoTrayMenuStyle.cs"
-             Link="Shared\NeoUI\NeoTrayMenuStyle.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoTrayMenuBuilder.cs"
-             Link="Shared\NeoUI\NeoTrayMenuBuilder.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoTrayIconInteraction.cs"
-             Link="Shared\NeoUI\NeoTrayIconInteraction.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoContextMenu.cs"
-             Link="Shared\NeoUI\NeoContextMenu.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoLanguageMenuBuilder.cs"
-             Link="Shared\NeoUI\NeoLanguageMenuBuilder.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoColorMenuBuilder.cs"
-             Link="Shared\NeoUI\NeoColorMenuBuilder.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoMessageBox.xaml.cs"
-             Link="Shared\NeoUI\NeoMessageBox.xaml.cs">
+    <Compile Include="..\Shared\FlagsPack\CountryFlags.cs" Link="Shared\FlagsPack\CountryFlags.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoThemePalette.cs" Link="Shared\NeoUI\NeoThemePalette.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoAssetPaths.cs" Link="Shared\NeoUI\NeoAssetPaths.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoAssetService.cs" Link="Shared\NeoUI\NeoAssetService.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoTrayMenuStyle.cs" Link="Shared\NeoUI\NeoTrayMenuStyle.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoTrayMenuBuilder.cs" Link="Shared\NeoUI\NeoTrayMenuBuilder.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoTrayIconInteraction.cs" Link="Shared\NeoUI\NeoTrayIconInteraction.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoContextMenu.cs" Link="Shared\NeoUI\NeoContextMenu.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoLanguageMenuBuilder.cs" Link="Shared\NeoUI\NeoLanguageMenuBuilder.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoColorMenuBuilder.cs" Link="Shared\NeoUI\NeoColorMenuBuilder.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoMessageBox.xaml.cs" Link="Shared\NeoUI\NeoMessageBox.xaml.cs">
       <DependentUpon>NeoMessageBox.xaml</DependentUpon>
     </Compile>
-    <Page Include="..\Shared\NeoUI\NeoMessageBox.xaml"
-          Link="Shared\NeoUI\NeoMessageBox.xaml" />
-    <Compile Include="..\Shared\NeoUI\NeoTitleBar.xaml.cs"
-             Link="Shared\NeoUI\NeoTitleBar.xaml.cs">
+    <Page Include="..\Shared\NeoUI\NeoMessageBox.xaml" Link="Shared\NeoUI\NeoMessageBox.xaml" />
+    <Compile Include="..\Shared\NeoUI\NeoTitleBar.xaml.cs" Link="Shared\NeoUI\NeoTitleBar.xaml.cs">
       <DependentUpon>NeoTitleBar.xaml</DependentUpon>
     </Compile>
-    <Page Include="..\Shared\NeoUI\NeoTitleBar.xaml"
-          Link="Shared\NeoUI\NeoTitleBar.xaml" />
-    <Page Include="..\Shared\NeoUI\NeoMenuStyles.xaml"
-          Link="Shared\NeoUI\NeoMenuStyles.xaml" />
-    <Page Include="..\Shared\NeoUI\NeoWindowStyles.xaml"
-          Link="Shared\NeoUI\NeoWindowStyles.xaml" />
+    <Page Include="..\Shared\NeoUI\NeoTitleBar.xaml" Link="Shared\NeoUI\NeoTitleBar.xaml" />
+    <Page Include="..\Shared\NeoUI\NeoMenuStyles.xaml" Link="Shared\NeoUI\NeoMenuStyles.xaml" />
+    <Page Include="..\Shared\NeoUI\NeoWindowStyles.xaml" Link="Shared\NeoUI\NeoWindowStyles.xaml" />
   </ItemGroup>
 
   <ItemGroup>
@@ -105,4 +80,9 @@
     <Resource Include="Resources\device.ico" />
     <Resource Include="Resources\exit.ico" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="winfsp.net" Version="2.2.26215" />
+  </ItemGroup>
 </Project>
+

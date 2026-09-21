@@ -50,7 +50,7 @@ namespace DROPME.Utils
         }
 
         /// <summary>
-        /// Загружает метаданные узла через /.wifidropfs/meta.
+        /// Загружает метаданные узла через /.dropmefs/meta.
         /// HTTP 404 преобразуется в корректный результат Exists=false.
         /// </summary>
         public bool GetMetadata(string path, out NodeMetadata metadata, out string errorMessage)
@@ -77,7 +77,7 @@ namespace DROPME.Utils
         }
 
         /// <summary>
-        /// Загружает список каталога через /.wifidropfs/list.
+        /// Загружает список каталога через /.dropmefs/list.
         /// </summary>
         public bool ListDirectory(string path, out List<DirectoryEntry> entries, out string errorMessage)
         {
@@ -305,12 +305,12 @@ namespace DROPME.Utils
 
         private static string BuildMetaPath(string path)
         {
-            return "/.wifidropfs/meta?path=" + UrlEncode(path);
+            return "/.dropmefs/meta?path=" + UrlEncode(path);
         }
 
         private static string BuildListPath(string path)
         {
-            return "/.wifidropfs/list?path=" + UrlEncode(path);
+            return "/.dropmefs/list?path=" + UrlEncode(path);
         }
 
         private static string BuildFilePath(string path)

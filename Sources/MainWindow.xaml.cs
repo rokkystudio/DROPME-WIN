@@ -209,7 +209,7 @@ namespace DROPME
         }
 
         /// <summary>
-        /// Открывает mounted drive либо WebDAV/browser path выбранного клиента и показывает tray-уведомление при недоступном пути.
+        /// Открывает WinFsp-диск, затем WebDAV/browser path выбранного клиента и показывает tray-уведомление при недоступном пути.
         /// </summary>
         private void OpenClientDrive(string clientId)
         {

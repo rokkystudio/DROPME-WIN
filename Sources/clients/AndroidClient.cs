@@ -12,6 +12,16 @@ namespace DROPME.Clients
     }
 
     /// <summary>
+    /// Определяет backend, через который Android-хранилище смонтировано в Windows.
+    /// </summary>
+    internal enum AndroidDriveBackend
+    {
+        None,
+        WinFsp,
+        WebClient
+    }
+
+    /// <summary>
     /// Хранит параметры подключенного Android-устройства и его control session.
     /// </summary>
     internal sealed class AndroidClient
@@ -36,6 +46,7 @@ namespace DROPME.Clients
         public bool MountReady { get; set; }
         public string RemoteIp { get; set; } = string.Empty;
         public string DriveLetter { get; set; } = string.Empty;
+        public AndroidDriveBackend DriveBackend { get; set; } = AndroidDriveBackend.None;
         public string MountError { get; set; } = string.Empty;
         public string DriveName { get; set; } = string.Empty;
         public AndroidSessionState SessionState { get; set; } = AndroidSessionState.Pending;

@@ -133,28 +133,16 @@ namespace DROPME.Server
 
             if (client.MountReady)
             {
-                WebDavDriveMapper.MountResult mountResult = WebDavDriveMapper.Mount(client);
-                if (mountResult.DriveLetter != null)
-                {
-                    client.DriveLetter = mountResult.DriveLetter;
-                    client.MountError = string.Empty;
-                }
-                else
-                {
-                    client.DriveLetter = string.Empty;
-                    if (client.MountError.Length == 0)
-                    {
-                        client.MountError = mountResult.ErrorMessage;
-                    }
-                }
+                DriveMountService.MountResult mountResult = DriveMountService.Mount(client);
+                client.DriveLetter = mountResult.DriveLetter;
+                client.DriveBackend = mountResult.Backend;
+                client.MountError = mountResult.ErrorMessage;
             }
             else
             {
                 client.DriveLetter = string.Empty;
-                if (client.MountError.Length == 0)
-                {
-                    client.MountError = string.Empty;
-                }
+                client.DriveBackend = AndroidDriveBackend.None;
+                client.MountError = string.Empty;
             }
 
             clientManager_.AddClient(client);
@@ -282,7 +270,7 @@ namespace DROPME.Server
             AndroidClient? removed = clientManager_.RemoveClient(clientId);
             if (removed != null)
             {
-                WebDavDriveMapper.Unmount(removed);
+                DriveMountService.Unmount(removed);
             }
         }
 

@@ -3,7 +3,7 @@
           AfterTargets="Build"
           Condition="'$(MSBuildProjectExtension)' == '.csproj'
                   and '$(Configuration)' == 'Release'
-                  and ('$(Platform)' == 'x64' or '$(Platform)' == 'x86')
+                  and '$(Platform)' == 'x64'
                   and '$(DesignTimeBuild)' != 'true'
                   and '$(IsTemporaryTargetAssembly)' != 'true'
                   and '$(SkipAutoPublishAfterBuild)' != 'true'">
