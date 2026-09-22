@@ -20,9 +20,11 @@ WinFsp создаёт диск в Проводнике Windows и передаё
 - WinFsp 2.2.26215.
 - .NET 8 Desktop Runtime x64 (для framework-dependent запуска) или self-contained публикация DROPME.
 
-Установщик WinFsp:
+## Установка WinFsp
 
-`Files/winfsp-2.2.26215.msi`
+Установщик: `Files/winfsp-2.2.26215.msi`
+
+На 64-битной Windows WinFsp штатно устанавливается в `C:\Program Files (x86)\WinFsp`. Это не означает установку 32-битной версии: пакет содержит x64-компоненты, а DROPME использует `winfsp-x64.dll`.
 
 ## Сборка
 
