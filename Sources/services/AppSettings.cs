@@ -4,7 +4,7 @@ using System.IO;
 namespace DROPME.Services
 {
     /// <summary>
-    /// Хранит пользовательские настройки темы и режима языка в профиле текущего пользователя.
+    /// Хранит пользовательские настройки темы, языка и режима доступа к Android-хранилищу в профиле текущего пользователя.
     /// </summary>
     internal static class AppSettings
     {
@@ -15,6 +15,7 @@ namespace DROPME.Services
 
         public static string Theme { get; set; } = "Light";
         public static string Language { get; set; } = LocalizationService.AutomaticLanguage;
+        public static bool UseWebInterface { get; set; }
 
         /// <summary>
         /// Загружает поддерживаемые настройки из текстового файла.
@@ -44,11 +45,15 @@ namespace DROPME.Services
                 {
                     Language = value;
                 }
+                else if (string.Equals(key, "UseWebInterface", StringComparison.OrdinalIgnoreCase))
+                {
+                    UseWebInterface = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+                }
             }
         }
 
         /// <summary>
-        /// Записывает текущие значения темы и режима языка в профиль пользователя.
+        /// Записывает текущие значения темы, языка и режима доступа к Android-хранилищу в профиль пользователя.
         /// </summary>
         public static void Save()
         {
@@ -56,7 +61,8 @@ namespace DROPME.Services
             File.WriteAllLines(SettingsPath, new[]
             {
                 "Theme=" + Theme,
-                "Language=" + Language
+                "Language=" + Language,
+                "UseWebInterface=" + (UseWebInterface ? "true" : "false")
             });
         }
     }

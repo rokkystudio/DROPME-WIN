@@ -24,7 +24,9 @@ namespace DROPME
 
             Log.Initialize();
             Log.Info("DROPME starting");
-            Log.Info("Drive backend priority: WinFsp, then WebClient fallback, then browser");
+            Log.Info(AppSettings.UseWebInterface
+                ? "Drive backend: forced browser interface"
+                : "Drive backend priority: WinFsp, then WebClient fallback, then browser");
 
             clientManager_ = new ClientManager();
             server_ = new WifiDropServer(clientManager_);

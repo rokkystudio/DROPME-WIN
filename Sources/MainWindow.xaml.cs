@@ -220,6 +220,24 @@ namespace DROPME
                     continue;
                 }
 
+                if (AppSettings.UseWebInterface)
+                {
+                    if (!client.MountReady)
+                    {
+                        ShowNotification(LocalizationService.Text("endpoint_not_ready"), Forms.ToolTipIcon.Info);
+                        return;
+                    }
+
+                    string forcedBrowserUrl = BuildClientBrowserUrl(client);
+                    if (forcedBrowserUrl.Length > 0 && TryOpen(forcedBrowserUrl, "forced client browser URL"))
+                    {
+                        return;
+                    }
+
+                    ShowNotification(LocalizationService.Text("client_path_unavailable"), Forms.ToolTipIcon.Error);
+                    return;
+                }
+
                 if (client.DriveLetter.Length > 0)
                 {
                     if (!TryOpen(client.DriveLetter + ":\\", "client drive"))
@@ -381,6 +399,51 @@ namespace DROPME
             UpdateAutostartCheckBox();
         }
 
+        /// <summary>
+        /// Переключает принудительный браузерный режим и сразу приводит backend активных клиентов
+        /// к выбранному режиму без разрыва control session.
+        /// </summary>
+        private void SetUseWebInterface(bool enabled)
+        {
+            AppSettings.UseWebInterface = enabled;
+            AppSettings.Save();
+
+            foreach (AndroidClient client in clientManager_.ListClients())
+            {
+                if (enabled)
+                {
+                    DriveMountService.Unmount(client);
+                    clientManager_.UpdateMountState(
+                        client.ClientId,
+                        string.Empty,
+                        AndroidDriveBackend.None,
+                        string.Empty);
+                    continue;
+                }
+
+                if (!client.MountReady)
+                {
+                    continue;
+                }
+
+                DriveMountService.MountResult mountResult = DriveMountService.Mount(client);
+                clientManager_.UpdateMountState(
+                    client.ClientId,
+                    mountResult.DriveLetter,
+                    mountResult.Backend,
+                    mountResult.ErrorMessage);
+            }
+
+            Log.Info(enabled ? "Forced web interface enabled" : "WinFsp drive mode enabled");
+            UpdateUseWebInterfaceCheckBox();
+            RefreshDevices();
+        }
+
+        private void UseWebInterfaceCheckBox_OnClick(object sender, RoutedEventArgs e)
+        {
+            SetUseWebInterface(UseWebInterfaceCheckBox.IsChecked == true);
+        }
+
         private void OpenIncomingButton_OnClick(object sender, RoutedEventArgs e)
         {
             OpenIncomingFolder();
@@ -474,6 +537,7 @@ namespace DROPME
             DevicesTitleText.Text = LocalizationService.Text("devices");
             OpenIncomingButton.Content = LocalizationService.Text("open_incoming");
             UpdateAutostartCheckBox();
+            UpdateUseWebInterfaceCheckBox();
             UpdateHeaderButtons();
         }
 
@@ -507,6 +571,12 @@ namespace DROPME
         {
             AutostartCheckBox.Content = LocalizationService.Text("autostart");
             AutostartCheckBox.IsChecked = autoStart_.IsEnabled();
+        }
+
+        private void UpdateUseWebInterfaceCheckBox()
+        {
+            UseWebInterfaceCheckBox.Content = LocalizationService.Text("use_web_interface");
+            UseWebInterfaceCheckBox.IsChecked = AppSettings.UseWebInterface;
         }
 
         /// <summary>

@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Enumeration;
 using System.Runtime.InteropServices;
-using System.Runtime.Loader;
-using System.Reflection;
 using System.Security.AccessControl;
 using DROPME.Clients;
 using Fsp;
@@ -994,36 +992,34 @@ namespace DROPME.Utils
         private static readonly object mutex_ = new object();
         private static readonly Dictionary<string, MountedDrive> mountedDrives_ =
             new Dictionary<string, MountedDrive>(StringComparer.Ordinal);
-        private static bool assemblyResolverRegistered_;
 
         /// <summary>
-        /// Регистрирует разрешение системных зависимостей WinFsp .NET Standard на сборки текущего .NET runtime.
+        /// Читает полную файловую версию установленного x64 runtime WinFsp из каталога,
+        /// зарегистрированного официальным MSI.
         /// </summary>
-        private static void EnsureWinFspAssemblyResolver()
+        private static Version? GetInstalledRuntimeVersion()
         {
-            if (assemblyResolverRegistered_)
+            string? installDirectory = Microsoft.Win32.Registry.GetValue(
+                @"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\WinFsp",
+                "InstallDir",
+                null) as string;
+            if (string.IsNullOrWhiteSpace(installDirectory))
             {
-                return;
+                return null;
             }
 
-            AssemblyLoadContext.Default.Resolving += ResolveWinFspAssembly;
-            assemblyResolverRegistered_ = true;
-        }
+            string dllPath = Path.Combine(installDirectory, "bin", "winfsp-x64.dll");
+            if (!File.Exists(dllPath))
+            {
+                return null;
+            }
 
-        /// <summary>
-        /// Возвращает системную сборку .NET 8 для совместимых зависимостей, запрошенных winfsp.net.
-        /// </summary>
-        private static Assembly? ResolveWinFspAssembly(AssemblyLoadContext context, AssemblyName assemblyName)
-        {
-            if (assemblyName.Name == "Microsoft.Win32.Registry")
-            {
-                return typeof(Microsoft.Win32.Registry).Assembly;
-            }
-            if (assemblyName.Name == "System.IO.FileSystem.AccessControl")
-            {
-                return typeof(System.IO.FileSystemAclExtensions).Assembly;
-            }
-            return null;
+            System.Diagnostics.FileVersionInfo versionInfo =
+                System.Diagnostics.FileVersionInfo.GetVersionInfo(dllPath);
+            return new Version(
+                versionInfo.FileMajorPart,
+                versionInfo.FileMinorPart,
+                versionInfo.FileBuildPart);
         }
 
         /// <summary>
@@ -1057,15 +1053,21 @@ namespace DROPME.Utils
                 FileSystemHost? host = null;
                 try
                 {
-                    EnsureWinFspAssemblyResolver();
-                    Version version = FileSystemHost.Version();
                     Version minimumVersion = new Version(2, 2, 26215);
-                    Log.Info("WinFsp runtime detected: " + version);
-                    if (version.CompareTo(minimumVersion) < 0)
+                    Version? installedVersion = GetInstalledRuntimeVersion();
+                    if (installedVersion == null)
                     {
-                        errorMessage = "WinFsp 2.2.26215 or newer is required. Installed version: " + version;
+                        errorMessage = "WinFsp 2.2.26215 runtime is not installed";
                         return null;
                     }
+                    if (installedVersion.CompareTo(minimumVersion) < 0)
+                    {
+                        errorMessage = "WinFsp 2.2.26215 or newer is required. Installed version: " + installedVersion;
+                        return null;
+                    }
+
+                    Version apiVersion = FileSystemHost.Version();
+                    Log.Info("WinFsp runtime detected: file=" + installedVersion + ", API=" + apiVersion);
 
                     fileSystem = new AndroidRemoteFileSystem(client);
                     host = new FileSystemHost(fileSystem);
@@ -1111,7 +1113,8 @@ namespace DROPME.Utils
                 {
                     host?.Dispose();
                     fileSystem?.Dispose();
-                    errorMessage = "WinFsp mount failed: " + exception.Message;
+                    Log.Error("WinFsp mount failed: " + exception);
+                    errorMessage = "WinFsp mount failed: " + exception.GetBaseException().Message;
                     return null;
                 }
             }

@@ -12,6 +12,8 @@ DROPME связывает Android-устройство и Windows-компьют
 
 WinFsp создаёт диск в Проводнике Windows и передаёт файловые операции Android-хранилищу.
 
+В главном окне доступна настройка **«Использовать веб-интерфейс вместо WinFsp»**. В этом режиме DROPME не создаёт виртуальный диск и открывает Android-хранилище напрямую в браузере. Настройка сохраняется между запусками.
+
 ## Требования
 
 - Windows 10/11 x64.
@@ -34,7 +36,7 @@ dotnet build .\DROPME.csproj -c Debug -p:Platform=x64
 dotnet publish .\DROPME.csproj -c Release -p:Platform=x64
 ```
 
-Конфигурация сборки x64 задана в `DROPME.csproj`.
+Конфигурация сборки x64 задана в `DROPME.csproj`. Release остаётся single-file self-contained приложением; содержимое bundle извлекается при запуске, поскольку официальный `winfsp.net` 2.2.26215 определяет свою версию через физический путь `winfsp-msil.dll`.
 
 ## Каталоги
 

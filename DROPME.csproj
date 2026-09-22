@@ -16,9 +16,9 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
-    <Version>1.0.32</Version>
-    <AssemblyVersion>1.0.32.0</AssemblyVersion>
-    <FileVersion>1.0.32.0</FileVersion>
+    <Version>1.0.33</Version>
+    <AssemblyVersion>1.0.33.0</AssemblyVersion>
+    <FileVersion>1.0.33.0</FileVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Platform)' == 'x64'">
@@ -29,7 +29,7 @@
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishDir>Build\publish\$(Platform)\</PublishDir>
   </PropertyGroup>

@@ -1,10 +1,11 @@
 using DROPME.Clients;
+using DROPME.Services;
 
 namespace DROPME.Utils
 {
     /// <summary>
     /// Выбирает backend для публикации Android-хранилища как диска Windows.
-    /// Основным backend является WinFsp; системный WebClient используется только как fallback.
+    /// Основным backend является WinFsp; системный WebClient используется только как fallback, а пользователь может принудительно выбрать браузерный интерфейс.
     /// </summary>
     internal static class DriveMountService
     {
@@ -16,10 +17,16 @@ namespace DROPME.Utils
         }
 
         /// <summary>
-        /// Сначала монтирует файловый API Android через WinFsp, затем при неуспехе пробует WebClient.
+        /// При включённом браузерном режиме не создаёт диск; иначе сначала монтирует файловый API Android
+        /// через WinFsp, затем при неуспехе пробует WebClient.
         /// </summary>
         public static MountResult Mount(AndroidClient client)
         {
+            if (AppSettings.UseWebInterface)
+            {
+                return new MountResult();
+            }
+
             string? winFspDrive = WinFspDriveHost.Mount(client, out string winFspError);
             if (!string.IsNullOrEmpty(winFspDrive))
             {

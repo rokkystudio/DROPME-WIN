@@ -88,6 +88,29 @@ namespace DROPME.Clients
         }
 
         /// <summary>
+        /// Обновляет состояние файлового backend для уже подключенного клиента без разрыва control session.
+        /// </summary>
+        public bool UpdateMountState(
+            string clientId,
+            string driveLetter,
+            AndroidDriveBackend driveBackend,
+            string mountError)
+        {
+            lock (mutex_)
+            {
+                if (!clients_.TryGetValue(clientId, out AndroidClient? client))
+                {
+                    return false;
+                }
+
+                client.DriveLetter = driveLetter;
+                client.DriveBackend = driveBackend;
+                client.MountError = mountError;
+                return true;
+            }
+        }
+
+        /// <summary>
         /// Возвращает независимые копии всех активных клиентских записей.
         /// </summary>
         public List<AndroidClient> ListClients()
