@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using DROPME.Clients;
@@ -16,6 +17,9 @@ namespace DROPME.Server
     internal sealed class WifiDropServer : IDisposable
     {
         private const int MaxHeaderSize = 64 * 1024;
+        private const int ClientReceiveTimeoutMs = 120_000;
+        private const int ClientSendTimeoutMs = 30_000;
+        private static readonly TimeSpan StaleUploadTempAge = TimeSpan.FromDays(1);
 
         private readonly ClientManager clientManager_;
         private readonly UploadController uploadController_;
@@ -51,6 +55,8 @@ namespace DROPME.Server
 
             try
             {
+                CleanupStaleUploadTempFiles();
+
                 listener_ = new TcpListener(IPAddress.Any, Protocol.TcpPort);
                 listener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ExclusiveAddressUse, true);
                 listener_.Start();
@@ -167,9 +173,12 @@ namespace DROPME.Server
         /// </summary>
         private void HandleClient(TcpClient clientSocket, string remoteIp)
         {
+            clientSocket.ReceiveTimeout = ClientReceiveTimeoutMs;
+            clientSocket.SendTimeout = ClientSendTimeoutMs;
+            HttpRequest? request = null;
             try
             {
-                HttpRequest request = new HttpRequest
+                request = new HttpRequest
                 {
                     RemoteIp = remoteIp
                 };
@@ -205,6 +214,12 @@ namespace DROPME.Server
             }
             finally
             {
+                if (request != null && request.BodyFilePath.Length > 0)
+                {
+                    TryDeleteRequestBodyFile(request.BodyFilePath);
+                    request.BodyFilePath = string.Empty;
+                }
+
                 lock (activeSocketsMutex_)
                 {
                     activeSockets_.Remove(clientSocket);
@@ -229,7 +244,8 @@ namespace DROPME.Server
         }
 
         /// <summary>
-        /// Читает request line, headers и тело запроса с лимитом заголовка 64 KiB.
+        /// Читает request line и headers с лимитом заголовка 64 KiB.
+        /// Upload body потоково сохраняется во временный файл, остальные небольшие тела остаются в памяти.
         /// Разбор request line принимает произвольные whitespace-разделители и игнорирует дополнительные токены после HTTP version.
         /// </summary>
         private static bool ReceiveHttpRequest(TcpClient clientSocket, HttpRequest request)
@@ -257,12 +273,11 @@ namespace DROPME.Server
                 }
 
                 received.Write(chunk, 0, count);
-                if (received.Length > MaxHeaderSize)
+                headerEnd = FindHeaderEnd(received.GetBuffer(), (int)received.Length);
+                if ((headerEnd < 0 && received.Length > MaxHeaderSize) || headerEnd > MaxHeaderSize)
                 {
                     return false;
                 }
-
-                headerEnd = FindHeaderEnd(received.GetBuffer(), (int)received.Length);
             }
 
             byte[] all = received.ToArray();
@@ -312,21 +327,49 @@ namespace DROPME.Server
             }
 
             int bodyOffset = headerEnd + 4;
-            using MemoryStream body = new MemoryStream();
-            if (all.Length > bodyOffset)
-            {
-                body.Write(all, bodyOffset, all.Length - bodyOffset);
-            }
+            int initialBodySize = Math.Max(0, all.Length - bodyOffset);
 
-            if (request.Headers.TryGetValue("content-length", out string? contentLengthText))
+            bool isUploadRequest =
+                string.Equals(request.Method, "PUT", StringComparison.Ordinal) &&
+                (request.Path == "/dropme/upload" || request.Path == "/wifidrop/upload");
+
+            if (isUploadRequest)
             {
-                if (!ulong.TryParse(contentLengthText, out ulong parsedBodySize) ||
-                    parsedBodySize > int.MaxValue)
+                if (!request.Headers.TryGetValue("content-length", out string? uploadLengthText) ||
+                    !long.TryParse(uploadLengthText, out long expectedBodySize) ||
+                    expectedBodySize < 0)
                 {
                     return false;
                 }
 
-                int expectedBodySize = (int)parsedBodySize;
+                return ReceiveUploadBody(
+                    stream,
+                    all,
+                    bodyOffset,
+                    initialBodySize,
+                    expectedBodySize,
+                    chunk,
+                    request);
+            }
+
+            using MemoryStream body = new MemoryStream();
+            if (initialBodySize > 0)
+            {
+                body.Write(all, bodyOffset, initialBodySize);
+            }
+
+            if (request.Headers.TryGetValue("content-length", out string? contentLengthText))
+            {
+                if (!int.TryParse(contentLengthText, out int expectedBodySize) || expectedBodySize < 0)
+                {
+                    return false;
+                }
+
+                if (body.Length > expectedBodySize)
+                {
+                    body.SetLength(expectedBodySize);
+                }
+
                 while (body.Length < expectedBodySize)
                 {
                     int count;
@@ -350,13 +393,8 @@ namespace DROPME.Server
                     body.Write(chunk, 0, count);
                 }
 
-                byte[] bodyBytes = body.ToArray();
-                if (bodyBytes.Length != expectedBodySize)
-                {
-                    Array.Resize(ref bodyBytes, expectedBodySize);
-                }
-
-                request.Body = bodyBytes;
+                request.Body = body.ToArray();
+                request.BodyLength = request.Body.LongLength;
                 return true;
             }
 
@@ -384,7 +422,130 @@ namespace DROPME.Server
             }
 
             request.Body = body.ToArray();
+            request.BodyLength = request.Body.LongLength;
             return true;
+        }
+
+        private static string GetUploadTempDirectory()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "DROPME", "uploads");
+            Directory.CreateDirectory(path);
+            return path;
+        }
+
+        private static void CleanupStaleUploadTempFiles()
+        {
+            try
+            {
+                string directory = GetUploadTempDirectory();
+                DateTime cutoff = DateTime.UtcNow - StaleUploadTempAge;
+                foreach (string path in Directory.EnumerateFiles(directory, "*.upload"))
+                {
+                    try
+                    {
+                        if (File.GetLastWriteTimeUtc(path) < cutoff)
+                        {
+                            File.Delete(path);
+                        }
+                    }
+                    catch (IOException)
+                    {
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                    }
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
+        private static bool ReceiveUploadBody(
+            NetworkStream stream,
+            byte[] initialBuffer,
+            int bodyOffset,
+            int initialBodySize,
+            long expectedBodySize,
+            byte[] chunk,
+            HttpRequest request)
+        {
+            if (initialBodySize > expectedBodySize)
+            {
+                return false;
+            }
+
+            string tempPath = string.Empty;
+            try
+            {
+                string uploadTempDirectory = GetUploadTempDirectory();
+                tempPath = Path.Combine(uploadTempDirectory, Guid.NewGuid().ToString("N") + ".upload");
+                using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                using FileStream output = new FileStream(
+                    tempPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    64 * 1024,
+                    FileOptions.SequentialScan);
+
+                long receivedBodySize = 0;
+                if (initialBodySize > 0)
+                {
+                    output.Write(initialBuffer, bodyOffset, initialBodySize);
+                    hash.AppendData(initialBuffer, bodyOffset, initialBodySize);
+                    receivedBodySize = initialBodySize;
+                }
+
+                while (receivedBodySize < expectedBodySize)
+                {
+                    int requested = (int)Math.Min(chunk.Length, expectedBodySize - receivedBodySize);
+                    int count = stream.Read(chunk, 0, requested);
+                    if (count <= 0)
+                    {
+                        throw new EndOfStreamException("Upload body ended before Content-Length bytes were received");
+                    }
+
+                    output.Write(chunk, 0, count);
+                    hash.AppendData(chunk, 0, count);
+                    receivedBodySize += count;
+                }
+
+                output.Flush(true);
+                request.BodyFilePath = tempPath;
+                request.BodyLength = receivedBodySize;
+                request.BodySha256 = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is IOException ||
+                exception is UnauthorizedAccessException ||
+                exception is CryptographicException)
+            {
+                Log.Warn("Failed to receive upload body: " + exception.Message);
+                TryDeleteRequestBodyFile(tempPath);
+                return false;
+            }
+        }
+
+        private static void TryDeleteRequestBodyFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
 
         private static int FindHeaderEnd(byte[] buffer, int length)

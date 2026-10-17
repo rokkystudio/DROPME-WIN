@@ -21,6 +21,7 @@ namespace DROPME.Server
         }
 
         private static readonly TimeSpan UploadBatchReuseTimeout = TimeSpan.FromMinutes(1);
+        private static readonly TimeSpan StaleStagingAge = TimeSpan.FromDays(1);
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -52,7 +53,16 @@ namespace DROPME.Server
                 });
                 return true;
             }
-            if (contentLength != request.Body.LongLength)
+            if (request.BodyFilePath.Length == 0 || !File.Exists(request.BodyFilePath))
+            {
+                SetJson(response, 400, "Bad Request", new
+                {
+                    ok = false,
+                    error = "Upload body was not staged"
+                });
+                return true;
+            }
+            if (contentLength != request.BodyLength)
             {
                 SetJson(response, 400, "Bad Request", new
                 {
@@ -73,8 +83,9 @@ namespace DROPME.Server
                 return true;
             }
 
-            string receivedSha256 = ComputeSha256Hex(request.Body);
-            if (!string.Equals(receivedSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            string receivedSha256 = request.BodySha256;
+            if (receivedSha256.Length == 0 ||
+                !string.Equals(receivedSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
             {
                 SetJson(response, 422, "Unprocessable Content", new
                 {
@@ -111,11 +122,25 @@ namespace DROPME.Server
             try
             {
                 string folder = ResolveIncomingFolder(request);
+                CleanupStaleStagingFiles(folder);
                 string filePath = FileName.MakeUniquePath(folder, validation.SanitizedName);
                 stagingPath = Path.Combine(folder, ".dropme-" + Guid.NewGuid().ToString("N") + ".tmp");
-                using (FileStream output = new FileStream(stagingPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                using (FileStream input = new FileStream(
+                    request.BodyFilePath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    1024 * 1024,
+                    FileOptions.SequentialScan))
+                using (FileStream output = new FileStream(
+                    stagingPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    1024 * 1024,
+                    FileOptions.SequentialScan))
                 {
-                    output.Write(request.Body, 0, request.Body.Length);
+                    input.CopyTo(output, 1024 * 1024);
                     output.Flush(true);
                 }
 
@@ -184,10 +209,34 @@ namespace DROPME.Server
             return true;
         }
 
-        private static string ComputeSha256Hex(byte[] bytes)
+        private static void CleanupStaleStagingFiles(string folder)
         {
-            using SHA256 sha256 = SHA256.Create();
-            return Convert.ToHexString(sha256.ComputeHash(bytes)).ToLowerInvariant();
+            DateTime cutoff = DateTime.UtcNow - StaleStagingAge;
+            try
+            {
+                foreach (string path in Directory.EnumerateFiles(folder, ".dropme-*.tmp"))
+                {
+                    try
+                    {
+                        if (File.GetLastWriteTimeUtc(path) < cutoff)
+                        {
+                            File.Delete(path);
+                        }
+                    }
+                    catch (IOException)
+                    {
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                    }
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
 
         private static string ComputeSha256Hex(string filePath)

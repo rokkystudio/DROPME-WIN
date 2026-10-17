@@ -15,6 +15,9 @@ namespace DROPME.Server
         public string HttpVersion { get; set; } = string.Empty;
         public Dictionary<string, string> Headers { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
         public byte[] Body { get; set; } = Array.Empty<byte>();
+        public string BodyFilePath { get; set; } = string.Empty;
+        public long BodyLength { get; set; }
+        public string BodySha256 { get; set; } = string.Empty;
         public string RemoteIp { get; set; } = string.Empty;
     }
 
