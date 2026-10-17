@@ -313,6 +313,29 @@ namespace DROPME.Utils
                 return false;
             }
 
+            if (!GetMetadata(destinationPath, out NodeMetadata destinationMetadata, out errorMessage))
+            {
+                return false;
+            }
+            if (!destinationMetadata.Exists)
+            {
+                errorMessage = "Move verification failed: destination does not exist";
+                return false;
+            }
+
+            if (!string.Equals(sourcePath, destinationPath, StringComparison.Ordinal))
+            {
+                if (!GetMetadata(sourcePath, out NodeMetadata sourceMetadata, out errorMessage))
+                {
+                    return false;
+                }
+                if (sourceMetadata.Exists)
+                {
+                    errorMessage = "Move verification failed: source still exists";
+                    return false;
+                }
+            }
+
             return true;
         }
 
