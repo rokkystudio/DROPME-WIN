@@ -211,10 +211,7 @@ namespace DROPME.Utils
                             FileAccess.ReadWrite,
                             FileShare.Read))
                         {
-                            if (allocationSize > 0)
-                            {
-                                stream.SetLength((long)Math.Min(allocationSize, (ulong)long.MaxValue));
-                            }
+                            stream.SetLength(0);
                         }
                         if (!client_.UploadFile(remotePath, tempPath, out string errorMessage))
                         {
@@ -309,7 +306,7 @@ namespace DROPME.Utils
                     return STATUS_UNEXPECTED_IO_ERROR;
                 }
 
-                handle.Stream!.SetLength((long)Math.Min(allocationSize, (ulong)long.MaxValue));
+                handle.Stream!.SetLength(0);
                 handle.Dirty = true;
                 fileInfo = BuildFileInfo(handle, (ulong)handle.Stream.Length);
                 return STATUS_SUCCESS;
