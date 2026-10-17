@@ -39,6 +39,8 @@ namespace DROPME.Utils
                 public AndroidFsHttpClient.NodeMetadata Metadata { get; set; } = new AndroidFsHttpClient.NodeMetadata();
                 public FileStream? Stream { get; set; }
                 public string TempPath { get; set; } = string.Empty;
+                public ulong LogicalSize { get; set; }
+                public ulong AllocationSize { get; set; }
                 public bool Dirty { get; set; }
                 public bool Deleted { get; set; }
                 public List<AndroidFsHttpClient.DirectoryEntry>? DirectoryEntries { get; set; }
@@ -233,7 +235,9 @@ namespace DROPME.Utils
                 RemoteHandle handle = new RemoteHandle
                 {
                     RemotePath = remotePath,
-                    Metadata = metadata
+                    Metadata = metadata,
+                    LogicalSize = metadata.Size,
+                    AllocationSize = directory ? 0 : allocationSize
                 };
                 fileNode = handle;
                 fileDesc = handle;
@@ -271,7 +275,9 @@ namespace DROPME.Utils
                 RemoteHandle handle = new RemoteHandle
                 {
                     RemotePath = remotePath,
-                    Metadata = metadata
+                    Metadata = metadata,
+                    LogicalSize = metadata.Size,
+                    AllocationSize = metadata.Directory ? 0 : AlignAllocation(metadata.Size)
                 };
                 fileNode = handle;
                 fileDesc = handle;
@@ -307,8 +313,10 @@ namespace DROPME.Utils
                 }
 
                 handle.Stream!.SetLength(0);
+                handle.LogicalSize = 0;
+                handle.AllocationSize = allocationSize;
                 handle.Dirty = true;
-                fileInfo = BuildFileInfo(handle, (ulong)handle.Stream.Length);
+                fileInfo = BuildFileInfo(handle, handle.LogicalSize);
                 return STATUS_SUCCESS;
             }
 
@@ -374,12 +382,12 @@ namespace DROPME.Utils
 
                 if (handle.Stream != null)
                 {
-                    if (offset >= (ulong)handle.Stream.Length)
+                    if (offset >= handle.LogicalSize)
                     {
                         return STATUS_END_OF_FILE;
                     }
 
-                    int count = (int)Math.Min((ulong)length, (ulong)handle.Stream.Length - offset);
+                    int count = (int)Math.Min((ulong)length, handle.LogicalSize - offset);
                     byte[] bytes = new byte[count];
                     handle.Stream.Position = (long)offset;
                     int read = handle.Stream.Read(bytes, 0, bytes.Length);
@@ -440,16 +448,20 @@ namespace DROPME.Utils
                 }
 
                 FileStream stream = handle.Stream!;
-                ulong writeOffset = writeToEndOfFile ? (ulong)stream.Length : offset;
+                ulong writeOffset = writeToEndOfFile ? handle.LogicalSize : offset;
                 uint writeLength = length;
                 if (constrainedIo)
                 {
-                    if (writeOffset >= (ulong)stream.Length)
+                    ulong writeLimit = Math.Max(handle.LogicalSize, handle.AllocationSize);
+                    if (writeLimit > 0)
                     {
-                        fileInfo = BuildFileInfo(handle, (ulong)stream.Length);
-                        return STATUS_SUCCESS;
+                        if (writeOffset >= writeLimit)
+                        {
+                            fileInfo = BuildFileInfo(handle, handle.LogicalSize);
+                            return STATUS_SUCCESS;
+                        }
+                        writeLength = (uint)Math.Min((ulong)writeLength, writeLimit - writeOffset);
                     }
-                    writeLength = (uint)Math.Min((ulong)writeLength, (ulong)stream.Length - writeOffset);
                 }
 
                 byte[] bytes = new byte[writeLength];
@@ -458,11 +470,20 @@ namespace DROPME.Utils
                     Marshal.Copy(buffer, bytes, 0, (int)writeLength);
                     stream.Position = (long)writeOffset;
                     stream.Write(bytes, 0, bytes.Length);
+                    ulong writtenEnd = writeOffset + writeLength;
+                    if (writtenEnd > handle.LogicalSize)
+                    {
+                        handle.LogicalSize = writtenEnd;
+                    }
+                    if (handle.LogicalSize > handle.AllocationSize)
+                    {
+                        handle.AllocationSize = AlignAllocation(handle.LogicalSize);
+                    }
                     handle.Dirty = true;
                 }
 
                 bytesTransferred = writeLength;
-                fileInfo = BuildFileInfo(handle, (ulong)stream.Length);
+                fileInfo = BuildFileInfo(handle, handle.LogicalSize);
                 return STATUS_SUCCESS;
             }
 
@@ -485,7 +506,7 @@ namespace DROPME.Utils
                 }
 
                 fileInfo = handle.Stream != null
-                    ? BuildFileInfo(handle, (ulong)handle.Stream.Length)
+                    ? BuildFileInfo(handle, handle.LogicalSize)
                     : BuildFileInfo(handle.Metadata);
                 return STATUS_SUCCESS;
             }
@@ -498,7 +519,7 @@ namespace DROPME.Utils
                 RemoteHandle handle = (RemoteHandle)fileDesc;
                 if (handle.Stream != null && handle.Dirty)
                 {
-                    fileInfo = BuildFileInfo(handle, (ulong)handle.Stream.Length);
+                    fileInfo = BuildFileInfo(handle, handle.LogicalSize);
                     return STATUS_SUCCESS;
                 }
 
@@ -555,12 +576,27 @@ namespace DROPME.Utils
                 }
 
                 FileStream stream = handle.Stream!;
-                if (!setAllocationSize || (ulong)stream.Length > newSize)
+                if (setAllocationSize)
                 {
+                    handle.AllocationSize = newSize;
+                    if (newSize < handle.LogicalSize)
+                    {
+                        handle.LogicalSize = newSize;
+                        stream.SetLength((long)Math.Min(newSize, (ulong)long.MaxValue));
+                        handle.Dirty = true;
+                    }
+                }
+                else
+                {
+                    handle.LogicalSize = newSize;
+                    if (newSize > handle.AllocationSize)
+                    {
+                        handle.AllocationSize = AlignAllocation(newSize);
+                    }
                     stream.SetLength((long)Math.Min(newSize, (ulong)long.MaxValue));
                     handle.Dirty = true;
                 }
-                fileInfo = BuildFileInfo(handle, (ulong)stream.Length);
+                fileInfo = BuildFileInfo(handle, handle.LogicalSize);
                 return STATUS_SUCCESS;
             }
 
@@ -827,6 +863,7 @@ namespace DROPME.Utils
 
                 try
                 {
+                    handle.Stream.SetLength((long)Math.Min(handle.LogicalSize, (ulong)long.MaxValue));
                     handle.Stream.Flush(true);
                 }
                 catch (Exception exception)
