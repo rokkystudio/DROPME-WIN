@@ -182,7 +182,12 @@ namespace DROPME.Utils
         /// Загружает локальный файл через PUT и подтверждает длину и SHA-256,
         /// рассчитанные Android после повторного чтения сохранённого файла.
         /// </summary>
-        public bool UploadFile(string path, string localFilePath, out string errorMessage)
+        public bool UploadFile(
+            string path,
+            string localFilePath,
+            string expectedEtag,
+            bool requireMissing,
+            out string errorMessage)
         {
             errorMessage = string.Empty;
             FileInfo file = new FileInfo(localFilePath);
@@ -201,6 +206,19 @@ namespace DROPME.Utils
                 using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Put, BuildAbsoluteUri(BuildFilePath(path)));
                 request.Headers.ExpectContinue = false;
                 request.Headers.TryAddWithoutValidation("X-DROPME-SHA256", expectedSha256);
+                if (requireMissing)
+                {
+                    request.Headers.TryAddWithoutValidation("If-None-Match", "*");
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(expectedEtag))
+                    {
+                        errorMessage = "Upload requires a known ETag for optimistic concurrency";
+                        return false;
+                    }
+                    request.Headers.TryAddWithoutValidation("If-Match", expectedEtag);
+                }
 
                 using FileStream stream = new FileStream(localFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using StreamContent content = new StreamContent(stream, 64 * 1024);
@@ -284,6 +302,16 @@ namespace DROPME.Utils
             if (response.StatusCode != HttpStatusCode.Created)
             {
                 errorMessage = "Create directory request failed with HTTP " + (int)response.StatusCode;
+                return false;
+            }
+
+            if (!GetMetadata(path, out NodeMetadata metadata, out errorMessage))
+            {
+                return false;
+            }
+            if (!metadata.Exists || !metadata.Directory)
+            {
+                errorMessage = "Create directory verification failed";
                 return false;
             }
 

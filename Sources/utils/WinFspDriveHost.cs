@@ -217,7 +217,12 @@ namespace DROPME.Utils
                         {
                             stream.SetLength(0);
                         }
-                        if (!client_.UploadFile(remotePath, tempPath, out string errorMessage))
+                        if (!client_.UploadFile(
+                            remotePath,
+                            tempPath,
+                            string.Empty,
+                            true,
+                            out string errorMessage))
                         {
                             Log.Warn("WinFsp create file failed for " + remotePath + ": " + errorMessage);
                             return STATUS_UNEXPECTED_IO_ERROR;
@@ -229,7 +234,8 @@ namespace DROPME.Utils
                     }
                 }
 
-                if (!TryGetMetadata(remotePath, out AndroidFsHttpClient.NodeMetadata metadata) || !metadata.Exists)
+                if (!TryGetMetadata(remotePath, out AndroidFsHttpClient.NodeMetadata metadata) ||
+                    !metadata.Exists || metadata.Directory != directory)
                 {
                     return STATUS_UNEXPECTED_IO_ERROR;
                 }
@@ -954,7 +960,12 @@ namespace DROPME.Utils
                         return false;
                     }
 
-                    if (!client_.UploadFile(handle.RemotePath, handle.TempPath, out errorMessage))
+                    if (!client_.UploadFile(
+                        handle.RemotePath,
+                        handle.TempPath,
+                        handle.Metadata.Etag,
+                        false,
+                        out errorMessage))
                     {
                         return false;
                     }
