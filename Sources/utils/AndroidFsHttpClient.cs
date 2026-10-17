@@ -259,7 +259,7 @@ namespace DROPME.Utils
                     request.Headers.TryAddWithoutValidation("If-Match", expectedEtag);
                 }
 
-                using FileStream stream = new FileStream(localFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using FileStream stream = new FileStream(localFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 using StreamContent content = new StreamContent(stream, 64 * 1024);
                 content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
                 content.Headers.ContentLength = file.Length;
@@ -445,7 +445,7 @@ namespace DROPME.Utils
 
         private static string ComputeSha256Hex(string filePath)
         {
-            using FileStream stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using FileStream stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using SHA256 sha256 = SHA256.Create();
             return Convert.ToHexString(sha256.ComputeHash(stream)).ToLowerInvariant();
         }
