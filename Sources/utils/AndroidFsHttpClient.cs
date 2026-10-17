@@ -35,6 +35,13 @@ namespace DROPME.Utils
             public bool Writable { get; set; }
         }
 
+        internal sealed class FileDigest
+        {
+            public long Length { get; set; }
+            public string Sha256 { get; set; } = string.Empty;
+            public string Etag { get; set; } = string.Empty;
+        }
+
         private sealed class ResponseData
         {
             public HttpStatusCode StatusCode { get; set; }
@@ -77,6 +84,26 @@ namespace DROPME.Utils
 
             metadata.Exists = true;
             return ParseMetadataBody(Encoding.UTF8.GetString(response.Body), metadata);
+        }
+
+        /// <summary>
+        /// Загружает подтверждённые длину и SHA-256 файла через /.dropmefs/digest.
+        /// </summary>
+        public bool GetFileDigest(string path, out FileDigest digest, out string errorMessage)
+        {
+            digest = new FileDigest();
+            if (!SendRequest(HttpMethod.Get, BuildDigestPath(path), Array.Empty<KeyValuePair<string, string>>(), out ResponseData response, out errorMessage))
+            {
+                return false;
+            }
+
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                errorMessage = "Digest request failed with HTTP " + (int)response.StatusCode;
+                return false;
+            }
+
+            return ParseDigestBody(Encoding.UTF8.GetString(response.Body), digest, out errorMessage);
         }
 
         /// <summary>
@@ -197,10 +224,9 @@ namespace DROPME.Utils
                 return false;
             }
 
+            string expectedSha256 = ComputeSha256Hex(localFilePath);
             try
             {
-                string expectedSha256 = ComputeSha256Hex(localFilePath);
-
                 using HttpClient client = CreateHttpClient();
                 client.Timeout = TimeSpan.FromHours(2);
                 using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Put, BuildAbsoluteUri(BuildFilePath(path)));
@@ -230,32 +256,69 @@ namespace DROPME.Utils
                 int statusCode = (int)response.StatusCode;
                 if (statusCode != 200 && statusCode != 201 && statusCode != 204)
                 {
+                    if (!requireMissing &&
+                        response.StatusCode == HttpStatusCode.PreconditionFailed &&
+                        ConfirmRemoteFile(path, file.Length, expectedSha256, out _))
+                    {
+                        return true;
+                    }
                     errorMessage = "Upload request failed with HTTP " + statusCode;
                     return false;
                 }
 
-                if (!TryGetSingleHeader(response, "X-DROPME-Length", out string storedLengthValue) ||
-                    !long.TryParse(storedLengthValue, NumberStyles.None, CultureInfo.InvariantCulture, out long storedLength) ||
-                    storedLength != file.Length)
+                bool responseVerified =
+                    TryGetSingleHeader(response, "X-DROPME-Length", out string storedLengthValue) &&
+                    long.TryParse(storedLengthValue, NumberStyles.None, CultureInfo.InvariantCulture, out long storedLength) &&
+                    storedLength == file.Length &&
+                    TryGetSingleHeader(response, "X-DROPME-SHA256", out string storedSha256) &&
+                    string.Equals(storedSha256.Trim(), expectedSha256, StringComparison.OrdinalIgnoreCase);
+                if (responseVerified)
                 {
-                    errorMessage = "Upload verification failed: stored length was not confirmed";
-                    return false;
+                    return true;
                 }
 
-                if (!TryGetSingleHeader(response, "X-DROPME-SHA256", out string storedSha256) ||
-                    !string.Equals(storedSha256.Trim(), expectedSha256, StringComparison.OrdinalIgnoreCase))
+                if (ConfirmRemoteFile(path, file.Length, expectedSha256, out string verificationError))
                 {
-                    errorMessage = "Upload verification failed: SHA-256 mismatch";
-                    return false;
+                    return true;
                 }
 
-                return true;
+                errorMessage = "Upload verification failed: " + verificationError;
+                return false;
             }
             catch (Exception exception)
             {
+                if (!requireMissing && ConfirmRemoteFile(path, file.Length, expectedSha256, out _))
+                {
+                    return true;
+                }
                 errorMessage = "Upload request failed: " + exception.Message;
                 return false;
             }
+        }
+
+        private bool ConfirmRemoteFile(
+            string path,
+            long expectedLength,
+            string expectedSha256,
+            out string errorMessage)
+        {
+            if (!GetFileDigest(path, out FileDigest digest, out errorMessage))
+            {
+                return false;
+            }
+            if (digest.Length != expectedLength)
+            {
+                errorMessage =
+                    "Remote digest length mismatch: expected=" + expectedLength +
+                    " actual=" + digest.Length;
+                return false;
+            }
+            if (!string.Equals(digest.Sha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                errorMessage = "Remote digest SHA-256 mismatch";
+                return false;
+            }
+            return true;
         }
 
         /// <summary>
@@ -460,6 +523,11 @@ namespace DROPME.Utils
             return "/.dropmefs/list?path=" + UrlEncode(path);
         }
 
+        private static string BuildDigestPath(string path)
+        {
+            return "/.dropmefs/digest?path=" + UrlEncode(path);
+        }
+
         private static string BuildFilePath(string path)
         {
             return UrlEncodePath(path);
@@ -590,6 +658,72 @@ namespace DROPME.Utils
                 }
             }
 
+            return true;
+        }
+
+        private static bool ParseDigestBody(string body, FileDigest digest, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            bool ok = false;
+            bool hasLength = false;
+            bool hasSha256 = false;
+
+            using StringReader reader = new StringReader(body);
+            for (string? line = reader.ReadLine(); line != null; line = reader.ReadLine())
+            {
+                int separator = line.IndexOf('=');
+                if (separator < 0)
+                {
+                    continue;
+                }
+
+                string key = line.Substring(0, separator);
+                string value = line.Substring(separator + 1);
+                switch (key)
+                {
+                    case "ok":
+                        ok = value == "1";
+                        break;
+                    case "length":
+                        hasLength = long.TryParse(
+                            value,
+                            NumberStyles.None,
+                            CultureInfo.InvariantCulture,
+                            out long parsedLength) && parsedLength >= 0;
+                        if (hasLength)
+                        {
+                            digest.Length = parsedLength;
+                        }
+                        break;
+                    case "sha256":
+                        hasSha256 = value.Length == 64;
+                        if (hasSha256)
+                        {
+                            foreach (char character in value)
+                            {
+                                if (!Uri.IsHexDigit(character))
+                                {
+                                    hasSha256 = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (hasSha256)
+                        {
+                            digest.Sha256 = value.ToLowerInvariant();
+                        }
+                        break;
+                    case "etag":
+                        digest.Etag = UrlDecode(value);
+                        break;
+                }
+            }
+
+            if (!ok || !hasLength || !hasSha256)
+            {
+                errorMessage = "Digest response is incomplete or invalid";
+                return false;
+            }
             return true;
         }
 
