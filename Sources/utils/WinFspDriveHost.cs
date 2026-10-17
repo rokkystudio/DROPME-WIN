@@ -430,7 +430,13 @@ namespace DROPME.Utils
                     return STATUS_END_OF_FILE;
                 }
                 uint requested = (uint)Math.Min((ulong)length, handle.Metadata.Size - offset);
-                if (!client_.ReadFileRange(handle.RemotePath, offset, requested, out byte[] remoteBytes, out string errorMessage))
+                if (!client_.ReadFileRange(
+                    handle.RemotePath,
+                    offset,
+                    requested,
+                    handle.Metadata.Etag,
+                    out byte[] remoteBytes,
+                    out string errorMessage))
                 {
                     Log.Warn("WinFsp read failed for " + handle.RemotePath + ": " + errorMessage);
                     return STATUS_UNEXPECTED_IO_ERROR;
@@ -865,7 +871,13 @@ namespace DROPME.Utils
                         while (offset < handle.Metadata.Size)
                         {
                             uint size = (uint)Math.Min((ulong)TransferChunkSize, handle.Metadata.Size - offset);
-                            if (!client_.ReadFileRange(handle.RemotePath, offset, size, out byte[] bytes, out errorMessage))
+                            if (!client_.ReadFileRange(
+                                handle.RemotePath,
+                                offset,
+                                size,
+                                handle.Metadata.Etag,
+                                out byte[] bytes,
+                                out errorMessage))
                             {
                                 stream.Dispose();
                                 TryDeleteTempFile(tempPath);

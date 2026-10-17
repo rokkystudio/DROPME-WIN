@@ -40,6 +40,7 @@ namespace DROPME.Utils
             public HttpStatusCode StatusCode { get; set; }
             public byte[] Body { get; set; } = Array.Empty<byte>();
             public ContentRangeHeaderValue? ContentRange { get; set; }
+            public string Etag { get; set; } = string.Empty;
         }
 
         private readonly string host_;
@@ -101,7 +102,7 @@ namespace DROPME.Utils
         /// <summary>
         /// Читает диапазон файла и трактует HTTP 416 как чтение за концом файла.
         /// </summary>
-        public bool ReadFileRange(string path, ulong offset, uint size, out byte[] bytes, out string errorMessage)
+        public bool ReadFileRange(string path, ulong offset, uint size, string expectedEtag, out byte[] bytes, out string errorMessage)
         {
             bytes = Array.Empty<byte>();
             errorMessage = string.Empty;
@@ -122,10 +123,14 @@ namespace DROPME.Utils
                 errorMessage = "Read range exceeds supported Int64 file offsets";
                 return false;
             }
-            KeyValuePair<string, string>[] headers =
+            List<KeyValuePair<string, string>> headers = new List<KeyValuePair<string, string>>
             {
                 new KeyValuePair<string, string>("Range", "bytes=" + offset + "-" + endInclusive)
             };
+            if (!string.IsNullOrEmpty(expectedEtag))
+            {
+                headers.Add(new KeyValuePair<string, string>("If-Match", expectedEtag));
+            }
 
             if (!SendRequest(HttpMethod.Get, BuildFilePath(path), headers, out ResponseData response, out errorMessage))
             {
@@ -135,6 +140,11 @@ namespace DROPME.Utils
             if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
             {
                 return true;
+            }
+            if (response.StatusCode == HttpStatusCode.PreconditionFailed)
+            {
+                errorMessage = "Remote file changed while it was open";
+                return false;
             }
 
             if (response.StatusCode != HttpStatusCode.PartialContent)
@@ -155,6 +165,12 @@ namespace DROPME.Utils
             {
                 errorMessage =
                     "Range read Content-Range mismatch: expected=" + offset + "-" + endInclusive;
+                return false;
+            }
+            if (!string.IsNullOrEmpty(expectedEtag) &&
+                !string.Equals(response.Etag, expectedEtag, StringComparison.Ordinal))
+            {
+                errorMessage = "Range read ETag mismatch";
                 return false;
             }
 
@@ -337,6 +353,7 @@ namespace DROPME.Utils
 
                 response.StatusCode = httpResponse.StatusCode;
                 response.ContentRange = httpResponse.Content.Headers.ContentRange;
+                response.Etag = httpResponse.Headers.ETag?.ToString() ?? string.Empty;
                 response.Body = httpResponse.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
                 return true;
             }
