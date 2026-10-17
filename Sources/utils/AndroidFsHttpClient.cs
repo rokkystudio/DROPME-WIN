@@ -48,6 +48,7 @@ namespace DROPME.Utils
             public byte[] Body { get; set; } = Array.Empty<byte>();
             public ContentRangeHeaderValue? ContentRange { get; set; }
             public string Etag { get; set; } = string.Empty;
+            public string Sha256 { get; set; } = string.Empty;
         }
 
         private readonly string host_;
@@ -152,7 +153,8 @@ namespace DROPME.Utils
             }
             List<KeyValuePair<string, string>> headers = new List<KeyValuePair<string, string>>
             {
-                new KeyValuePair<string, string>("Range", "bytes=" + offset + "-" + endInclusive)
+                new KeyValuePair<string, string>("Range", "bytes=" + offset + "-" + endInclusive),
+                new KeyValuePair<string, string>("X-DROPME-Verify", "sha256")
             };
             if (!string.IsNullOrEmpty(expectedEtag))
             {
@@ -198,6 +200,17 @@ namespace DROPME.Utils
                 !string.Equals(response.Etag, expectedEtag, StringComparison.Ordinal))
             {
                 errorMessage = "Range read ETag mismatch";
+                return false;
+            }
+            if (string.IsNullOrEmpty(response.Sha256))
+            {
+                errorMessage = "Range read SHA-256 was not provided";
+                return false;
+            }
+            string actualSha256 = ComputeSha256Hex(response.Body);
+            if (!string.Equals(response.Sha256, actualSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                errorMessage = "Range read SHA-256 mismatch";
                 return false;
             }
 
@@ -437,6 +450,12 @@ namespace DROPME.Utils
             return Convert.ToHexString(sha256.ComputeHash(stream)).ToLowerInvariant();
         }
 
+        private static string ComputeSha256Hex(byte[] bytes)
+        {
+            using SHA256 sha256 = SHA256.Create();
+            return Convert.ToHexString(sha256.ComputeHash(bytes)).ToLowerInvariant();
+        }
+
         private static bool TryGetSingleHeader(HttpResponseMessage response, string name, out string value)
         {
             value = string.Empty;
@@ -479,6 +498,9 @@ namespace DROPME.Utils
                 response.StatusCode = httpResponse.StatusCode;
                 response.ContentRange = httpResponse.Content.Headers.ContentRange;
                 response.Etag = httpResponse.Headers.ETag?.ToString() ?? string.Empty;
+                response.Sha256 = TryGetSingleHeader(httpResponse, "X-DROPME-SHA256", out string sha256)
+                    ? sha256.Trim().ToLowerInvariant()
+                    : string.Empty;
                 response.Body = httpResponse.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
                 return true;
             }
