@@ -84,7 +84,7 @@ namespace DROPME.Utils
             }
 
             metadata.Exists = true;
-            return ParseMetadataBody(Encoding.UTF8.GetString(response.Body), metadata);
+            return ParseMetadataBody(Encoding.UTF8.GetString(response.Body), metadata, out errorMessage);
         }
 
         /// <summary>
@@ -124,7 +124,7 @@ namespace DROPME.Utils
                 return false;
             }
 
-            return ParseListBody(Encoding.UTF8.GetString(response.Body), entries);
+            return ParseListBody(Encoding.UTF8.GetString(response.Body), entries, out errorMessage);
         }
 
         /// <summary>
@@ -639,8 +639,20 @@ namespace DROPME.Utils
             return Encoding.UTF8.GetString(bytes.ToArray());
         }
 
-        private static bool ParseMetadataBody(string body, NodeMetadata metadata)
+        private static bool ParseMetadataBody(
+            string body,
+            NodeMetadata metadata,
+            out string errorMessage)
         {
+            errorMessage = string.Empty;
+            bool ok = false;
+            bool hasDirectory = false;
+            bool hasSize = false;
+            bool hasLastModified = false;
+            bool hasWritable = false;
+            bool hasName = false;
+            bool hasEtag = false;
+
             using StringReader reader = new StringReader(body);
             for (string? line = reader.ReadLine(); line != null; line = reader.ReadLine())
             {
@@ -659,27 +671,54 @@ namespace DROPME.Utils
                 string value = line.Substring(separator + 1);
                 switch (key)
                 {
+                    case "ok":
+                        ok = value == "1";
+                        break;
                     case "directory":
-                        metadata.Directory = ParseBool(value);
+                        hasDirectory = TryParseBoolStrict(value, out bool directory);
+                        if (hasDirectory)
+                        {
+                            metadata.Directory = directory;
+                        }
                         break;
                     case "size":
-                        metadata.Size = ParseUnsigned(value);
+                        hasSize = TryParseUnsignedStrict(value, out ulong size);
+                        if (hasSize)
+                        {
+                            metadata.Size = size;
+                        }
                         break;
                     case "lastModified":
-                        metadata.LastModified = ParseUnsigned(value);
+                        hasLastModified = TryParseUnsignedStrict(value, out ulong lastModified);
+                        if (hasLastModified)
+                        {
+                            metadata.LastModified = lastModified;
+                        }
                         break;
                     case "writable":
-                        metadata.Writable = ParseBool(value);
+                        hasWritable = TryParseBoolStrict(value, out bool writable);
+                        if (hasWritable)
+                        {
+                            metadata.Writable = writable;
+                        }
                         break;
                     case "name":
                         metadata.Name = UrlDecode(value);
+                        hasName = metadata.Name.Length > 0;
                         break;
                     case "etag":
                         metadata.Etag = UrlDecode(value);
+                        hasEtag = metadata.Etag.Length > 0;
                         break;
                 }
             }
 
+            if (!ok || !hasDirectory || !hasSize || !hasLastModified ||
+                !hasWritable || !hasName || !hasEtag)
+            {
+                errorMessage = "Metadata response is incomplete or invalid";
+                return false;
+            }
             return true;
         }
 
@@ -749,44 +788,94 @@ namespace DROPME.Utils
             return true;
         }
 
-        private static bool ParseListBody(string body, List<DirectoryEntry> entries)
+        private static bool ParseListBody(
+            string body,
+            List<DirectoryEntry> entries,
+            out string errorMessage)
         {
             entries.Clear();
+            errorMessage = string.Empty;
+            bool ok = false;
+
             using StringReader reader = new StringReader(body);
             for (string? line = reader.ReadLine(); line != null; line = reader.ReadLine())
             {
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+                if (line == "ok=1")
+                {
+                    ok = true;
+                    continue;
+                }
                 if (!line.StartsWith("entry=", StringComparison.Ordinal))
                 {
                     continue;
                 }
 
                 string[] fields = line.Substring(6).Split('\t');
-                if (fields.Length < 5)
+                if (fields.Length != 5 ||
+                    !TryParseBoolStrict(fields[1], out bool directory) ||
+                    !TryParseUnsignedStrict(fields[2], out ulong size) ||
+                    !TryParseUnsignedStrict(fields[3], out ulong lastModified) ||
+                    !TryParseBoolStrict(fields[4], out bool writable))
                 {
-                    continue;
+                    entries.Clear();
+                    errorMessage = "Directory list contains an invalid entry";
+                    return false;
+                }
+
+                string name = UrlDecode(fields[0]);
+                if (name.Length == 0)
+                {
+                    entries.Clear();
+                    errorMessage = "Directory list contains an empty name";
+                    return false;
                 }
 
                 entries.Add(new DirectoryEntry
                 {
-                    Name = UrlDecode(fields[0]),
-                    Directory = ParseBool(fields[1]),
-                    Size = ParseUnsigned(fields[2]),
-                    LastModified = ParseUnsigned(fields[3]),
-                    Writable = ParseBool(fields[4])
+                    Name = name,
+                    Directory = directory,
+                    Size = size,
+                    LastModified = lastModified,
+                    Writable = writable
                 });
             }
 
+            if (!ok)
+            {
+                entries.Clear();
+                errorMessage = "Directory list response is incomplete or invalid";
+                return false;
+            }
             return true;
         }
 
-        private static bool ParseBool(string value)
+        private static bool TryParseBoolStrict(string value, out bool result)
         {
-            return value == "1" || value == "true";
+            if (value == "1" || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+            {
+                result = true;
+                return true;
+            }
+            if (value == "0" || string.Equals(value, "false", StringComparison.OrdinalIgnoreCase))
+            {
+                result = false;
+                return true;
+            }
+            result = false;
+            return false;
         }
 
-        private static ulong ParseUnsigned(string value)
+        private static bool TryParseUnsignedStrict(string value, out ulong result)
         {
-            return ulong.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out ulong result) ? result : 0;
+            return ulong.TryParse(
+                value,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out result);
         }
     }
 }
