@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Enumeration;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
+using System.Text;
 using DROPME.Clients;
 using Fsp;
 using FileInfo = Fsp.Interop.FileInfo;
@@ -39,6 +40,7 @@ namespace DROPME.Utils
                 public AndroidFsHttpClient.NodeMetadata Metadata { get; set; } = new AndroidFsHttpClient.NodeMetadata();
                 public FileStream? Stream { get; set; }
                 public string TempPath { get; set; } = string.Empty;
+                public string JournalPath { get; set; } = string.Empty;
                 public object SyncRoot { get; } = new object();
                 public ulong LogicalSize { get; set; }
                 public ulong AllocationSize { get; set; }
@@ -46,6 +48,14 @@ namespace DROPME.Utils
                 public bool DeletePending { get; set; }
                 public bool Deleted { get; set; }
                 public List<AndroidFsHttpClient.DirectoryEntry>? DirectoryEntries { get; set; }
+            }
+
+            private sealed class WritebackJournal
+            {
+                public string RemotePath { get; set; } = string.Empty;
+                public string ExpectedEtag { get; set; } = string.Empty;
+                public ulong LogicalSize { get; set; }
+                public bool Stable { get; set; }
             }
 
             private const ushort AllocationUnit = 4096;
@@ -65,6 +75,7 @@ namespace DROPME.Utils
                 volumeLabel_ = string.IsNullOrWhiteSpace(client.DriveName) ? "DROPME" : client.DriveName;
                 tempDirectory_ = Path.Combine(Path.GetTempPath(), "DROPME", client.ClientId);
                 Directory.CreateDirectory(tempDirectory_);
+                RecoverPendingWritebacks();
 
                 RawSecurityDescriptor securityDescriptor =
                     new RawSecurityDescriptor("O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;WD)");
@@ -322,6 +333,12 @@ namespace DROPME.Utils
                         return STATUS_UNEXPECTED_IO_ERROR;
                     }
 
+                    if (!WriteWritebackJournal(handle, false, out string journalError))
+                    {
+                        Log.Warn("WinFsp overwrite journal failed for " + handle.RemotePath + ": " + journalError);
+                        return STATUS_UNEXPECTED_IO_ERROR;
+                    }
+
                     handle.Stream!.SetLength(0);
                     handle.LogicalSize = 0;
                     handle.AllocationSize = allocationSize;
@@ -533,6 +550,12 @@ namespace DROPME.Utils
                     byte[] bytes = new byte[writeLength];
                     if (writeLength > 0)
                     {
+                        if (!WriteWritebackJournal(handle, false, out string journalError))
+                        {
+                            Log.Warn("WinFsp write journal failed for " + handle.RemotePath + ": " + journalError);
+                            return STATUS_UNEXPECTED_IO_ERROR;
+                        }
+
                         Marshal.Copy(buffer, bytes, 0, (int)writeLength);
                         stream.Position = (long)writeOffset;
                         stream.Write(bytes, 0, bytes.Length);
@@ -647,16 +670,26 @@ namespace DROPME.Utils
                     FileStream stream = handle.Stream!;
                     if (setAllocationSize)
                     {
-                        handle.AllocationSize = newSize;
                         if (newSize < handle.LogicalSize)
                         {
+                            if (!WriteWritebackJournal(handle, false, out string journalError))
+                            {
+                                Log.Warn("WinFsp resize journal failed for " + handle.RemotePath + ": " + journalError);
+                                return STATUS_UNEXPECTED_IO_ERROR;
+                            }
                             handle.LogicalSize = newSize;
                             stream.SetLength((long)Math.Min(newSize, (ulong)long.MaxValue));
                             handle.Dirty = true;
                         }
+                        handle.AllocationSize = newSize;
                     }
                     else
                     {
+                        if (!WriteWritebackJournal(handle, false, out string journalError))
+                        {
+                            Log.Warn("WinFsp resize journal failed for " + handle.RemotePath + ": " + journalError);
+                            return STATUS_UNEXPECTED_IO_ERROR;
+                        }
                         handle.LogicalSize = newSize;
                         if (newSize > handle.AllocationSize)
                         {
@@ -822,15 +855,41 @@ namespace DROPME.Utils
             }
 
             /// <summary>
-            /// Освобождает временные writeback-файлы данного виртуального тома.
+            /// Удаляет только безопасные временные файлы, сохраняя journaled writeback cache
+            /// для восстановления после сетевого сбоя или перезапуска.
             /// </summary>
             public void Dispose()
             {
                 try
                 {
-                    if (Directory.Exists(tempDirectory_))
+                    if (!Directory.Exists(tempDirectory_))
                     {
-                        Directory.Delete(tempDirectory_, true);
+                        return;
+                    }
+
+                    foreach (string pendingPath in Directory.EnumerateFiles(tempDirectory_, "*.journal.new"))
+                    {
+                        TryDeleteTempFile(pendingPath);
+                    }
+                    foreach (string tempPath in Directory.EnumerateFiles(tempDirectory_, "*.tmp"))
+                    {
+                        if (!File.Exists(tempPath + ".journal"))
+                        {
+                            TryDeleteTempFile(tempPath);
+                        }
+                    }
+                    foreach (string journalPath in Directory.EnumerateFiles(tempDirectory_, "*.tmp.journal"))
+                    {
+                        string tempPath = journalPath.Substring(0, journalPath.Length - ".journal".Length);
+                        if (!File.Exists(tempPath))
+                        {
+                            TryDeleteTempFile(journalPath);
+                        }
+                    }
+
+                    if (Directory.GetFileSystemEntries(tempDirectory_).Length == 0)
+                    {
+                        Directory.Delete(tempDirectory_);
                     }
                 }
                 catch (Exception exception)
@@ -860,11 +919,6 @@ namespace DROPME.Utils
                 errorMessage = string.Empty;
                 if (handle.Stream != null)
                 {
-                    if (truncate)
-                    {
-                        handle.Stream.SetLength(0);
-                        handle.Stream.Position = 0;
-                    }
                     return true;
                 }
 
@@ -960,6 +1014,12 @@ namespace DROPME.Utils
                         return false;
                     }
 
+                    if (!WriteWritebackJournal(handle, true, out string journalError))
+                    {
+                        errorMessage = "Could not persist stable writeback journal: " + journalError;
+                        return false;
+                    }
+
                     if (!client_.UploadFile(
                         handle.RemotePath,
                         handle.TempPath,
@@ -985,6 +1045,7 @@ namespace DROPME.Utils
 
                     handle.Metadata = metadata;
                     handle.Dirty = false;
+                    DeleteWritebackJournal(handle);
                     return true;
                 }
             }
@@ -1000,16 +1061,232 @@ namespace DROPME.Utils
                 }
                 handle.Stream = null;
 
-                if (handle.TempPath.Length > 0 && deleteTempFile)
+                if (deleteTempFile)
                 {
-                    TryDeleteTempFile(handle.TempPath);
-                    handle.TempPath = string.Empty;
+                    DeleteWritebackJournal(handle);
+                    if (handle.TempPath.Length > 0)
+                    {
+                        TryDeleteTempFile(handle.TempPath);
+                        handle.TempPath = string.Empty;
+                    }
                 }
             }
 
             private string CreateTempPath()
             {
                 return Path.Combine(tempDirectory_, Guid.NewGuid().ToString("N") + ".tmp");
+            }
+
+            private void DeleteWritebackJournal(RemoteHandle handle)
+            {
+                string journalPath = handle.JournalPath;
+                if (journalPath.Length == 0 && handle.TempPath.Length > 0)
+                {
+                    journalPath = handle.TempPath + ".journal";
+                }
+
+                if (journalPath.Length > 0)
+                {
+                    TryDeleteTempFile(journalPath + ".new");
+                    TryDeleteTempFile(journalPath);
+                }
+                handle.JournalPath = string.Empty;
+            }
+
+            private bool WriteWritebackJournal(RemoteHandle handle, bool stable, out string errorMessage)
+            {
+                errorMessage = string.Empty;
+                if (handle.TempPath.Length == 0)
+                {
+                    errorMessage = "Writeback cache path is not available";
+                    return false;
+                }
+                if (handle.Metadata.Etag.Length == 0)
+                {
+                    errorMessage = "Writeback journal requires a known remote ETag";
+                    return false;
+                }
+
+                string journalPath = handle.TempPath + ".journal";
+                string pendingPath = journalPath + ".new";
+                string content = string.Join(
+                    "\n",
+                    "stable=" + (stable ? "1" : "0"),
+                    "size=" + handle.LogicalSize,
+                    "path=" + Convert.ToBase64String(Encoding.UTF8.GetBytes(handle.RemotePath)),
+                    "etag=" + Convert.ToBase64String(Encoding.UTF8.GetBytes(handle.Metadata.Etag)),
+                    string.Empty);
+
+                try
+                {
+                    byte[] bytes = Encoding.UTF8.GetBytes(content);
+                    using (FileStream stream = new FileStream(
+                        pendingPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None))
+                    {
+                        stream.Write(bytes, 0, bytes.Length);
+                        stream.Flush(true);
+                    }
+                    File.Move(pendingPath, journalPath, true);
+                    handle.JournalPath = journalPath;
+                    return true;
+                }
+                catch (Exception exception)
+                {
+                    TryDeleteTempFile(pendingPath);
+                    errorMessage = exception.Message;
+                    return false;
+                }
+            }
+
+            private static bool TryReadWritebackJournal(
+                string journalPath,
+                out WritebackJournal journal,
+                out string errorMessage)
+            {
+                journal = new WritebackJournal();
+                errorMessage = string.Empty;
+                try
+                {
+                    bool hasStable = false;
+                    bool hasSize = false;
+                    bool hasPath = false;
+                    bool hasEtag = false;
+                    foreach (string line in File.ReadLines(journalPath, Encoding.UTF8))
+                    {
+                        int separator = line.IndexOf('=');
+                        if (separator <= 0)
+                        {
+                            continue;
+                        }
+
+                        string key = line.Substring(0, separator);
+                        string value = line.Substring(separator + 1);
+                        switch (key)
+                        {
+                            case "stable":
+                                if (value != "0" && value != "1")
+                                {
+                                    errorMessage = "Invalid writeback journal stable flag";
+                                    return false;
+                                }
+                                journal.Stable = value == "1";
+                                hasStable = true;
+                                break;
+                            case "size":
+                                hasSize = ulong.TryParse(value, out ulong size);
+                                if (!hasSize)
+                                {
+                                    errorMessage = "Invalid writeback journal size";
+                                    return false;
+                                }
+                                journal.LogicalSize = size;
+                                break;
+                            case "path":
+                                journal.RemotePath = Encoding.UTF8.GetString(Convert.FromBase64String(value));
+                                hasPath = journal.RemotePath.Length > 0;
+                                break;
+                            case "etag":
+                                journal.ExpectedEtag = Encoding.UTF8.GetString(Convert.FromBase64String(value));
+                                hasEtag = journal.ExpectedEtag.Length > 0;
+                                break;
+                        }
+                    }
+
+                    if (!hasStable || !hasSize || !hasPath || !hasEtag)
+                    {
+                        errorMessage = "Writeback journal is incomplete";
+                        return false;
+                    }
+                    return true;
+                }
+                catch (Exception exception)
+                {
+                    errorMessage = exception.Message;
+                    return false;
+                }
+            }
+
+            private void RecoverPendingWritebacks()
+            {
+                if (!Directory.Exists(tempDirectory_))
+                {
+                    return;
+                }
+
+                foreach (string journalPath in Directory.EnumerateFiles(tempDirectory_, "*.tmp.journal"))
+                {
+                    string tempPath = journalPath.Substring(0, journalPath.Length - ".journal".Length);
+                    if (!File.Exists(tempPath))
+                    {
+                        Log.Warn("Removing orphan writeback journal: " + journalPath);
+                        TryDeleteTempFile(journalPath);
+                        continue;
+                    }
+
+                    if (!TryReadWritebackJournal(journalPath, out WritebackJournal journal, out string parseError))
+                    {
+                        Log.Warn("Preserving invalid writeback journal " + journalPath + ": " + parseError);
+                        continue;
+                    }
+                    if (!journal.Stable)
+                    {
+                        Log.Warn("Preserving incomplete writeback cache without replay: " + tempPath);
+                        continue;
+                    }
+                    if (journal.LogicalSize > long.MaxValue)
+                    {
+                        Log.Warn("Preserving oversized writeback cache without replay: " + tempPath);
+                        continue;
+                    }
+
+                    System.IO.FileInfo cacheInfo = new System.IO.FileInfo(tempPath);
+                    if (!cacheInfo.Exists || (ulong)cacheInfo.Length != journal.LogicalSize)
+                    {
+                        Log.Warn(
+                            "Preserving writeback cache with unexpected size: " + tempPath +
+                            " expected=" + journal.LogicalSize +
+                            " actual=" + (cacheInfo.Exists ? cacheInfo.Length : -1));
+                        continue;
+                    }
+                    if (readOnly_)
+                    {
+                        Log.Warn("Preserving pending writeback cache on read-only mount: " + tempPath);
+                        continue;
+                    }
+
+                    if (client_.UploadFile(
+                        journal.RemotePath,
+                        tempPath,
+                        journal.ExpectedEtag,
+                        false,
+                        out string uploadError))
+                    {
+                        Log.Info("Recovered pending WinFsp writeback: " + journal.RemotePath);
+                        TryDeleteTempFile(tempPath);
+                        TryDeleteTempFile(journalPath);
+                    }
+                    else
+                    {
+                        Log.Warn(
+                            "Pending WinFsp writeback was not replayed for " + journal.RemotePath +
+                            ": " + uploadError + ". Preserved cache: " + tempPath);
+                    }
+                }
+
+                foreach (string pendingPath in Directory.EnumerateFiles(tempDirectory_, "*.journal.new"))
+                {
+                    TryDeleteTempFile(pendingPath);
+                }
+                foreach (string tempPath in Directory.EnumerateFiles(tempDirectory_, "*.tmp"))
+                {
+                    if (!File.Exists(tempPath + ".journal"))
+                    {
+                        TryDeleteTempFile(tempPath);
+                    }
+                }
             }
 
             private static void TryDeleteTempFile(string path)
