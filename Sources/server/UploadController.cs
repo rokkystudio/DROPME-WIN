@@ -125,21 +125,33 @@ namespace DROPME.Server
                 CleanupStaleStagingFiles(folder);
                 string filePath = FileName.MakeUniquePath(folder, validation.SanitizedName);
                 stagingPath = Path.Combine(folder, ".dropme-" + Guid.NewGuid().ToString("N") + ".tmp");
-                using (FileStream input = new FileStream(
-                    request.BodyFilePath,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read,
-                    1024 * 1024,
-                    FileOptions.SequentialScan))
-                using (FileStream output = new FileStream(
-                    stagingPath,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None,
-                    1024 * 1024,
-                    FileOptions.SequentialScan))
+                if (TryAdoptRequestBody(request, stagingPath))
                 {
+                    using FileStream adopted = new FileStream(
+                        stagingPath,
+                        FileMode.Open,
+                        FileAccess.ReadWrite,
+                        FileShare.None,
+                        1024 * 1024,
+                        FileOptions.SequentialScan);
+                    adopted.Flush(true);
+                }
+                else
+                {
+                    using FileStream input = new FileStream(
+                        request.BodyFilePath,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.Read,
+                        1024 * 1024,
+                        FileOptions.SequentialScan);
+                    using FileStream output = new FileStream(
+                        stagingPath,
+                        FileMode.CreateNew,
+                        FileAccess.Write,
+                        FileShare.None,
+                        1024 * 1024,
+                        FileOptions.SequentialScan);
                     input.CopyTo(output, 1024 * 1024);
                     output.Flush(true);
                 }
@@ -207,6 +219,40 @@ namespace DROPME.Server
                 }
             }
             return true;
+        }
+
+        private static bool TryAdoptRequestBody(HttpRequest request, string stagingPath)
+        {
+            if (request.BodyFilePath.Length == 0)
+            {
+                return false;
+            }
+
+            string sourceRoot = Path.GetPathRoot(Path.GetFullPath(request.BodyFilePath)) ?? string.Empty;
+            string destinationRoot = Path.GetPathRoot(Path.GetFullPath(stagingPath)) ?? string.Empty;
+            if (!string.Equals(sourceRoot, destinationRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            try
+            {
+                File.Move(request.BodyFilePath, stagingPath);
+                request.BodyFilePath = string.Empty;
+                return true;
+            }
+            catch (IOException)
+            {
+                if (File.Exists(stagingPath))
+                {
+                    throw;
+                }
+                return false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
         }
 
         private static void CleanupStaleStagingFiles(string folder)

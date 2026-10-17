@@ -39,6 +39,7 @@ namespace DROPME.Utils
         {
             public HttpStatusCode StatusCode { get; set; }
             public byte[] Body { get; set; } = Array.Empty<byte>();
+            public ContentRangeHeaderValue? ContentRange { get; set; }
         }
 
         private readonly string host_;
@@ -109,7 +110,18 @@ namespace DROPME.Utils
                 return true;
             }
 
-            ulong endInclusive = offset + size - 1;
+            ulong rangeLength = size;
+            if (offset > ulong.MaxValue - (rangeLength - 1UL))
+            {
+                errorMessage = "Read range overflows UInt64";
+                return false;
+            }
+            ulong endInclusive = offset + rangeLength - 1UL;
+            if (offset > long.MaxValue || endInclusive > long.MaxValue)
+            {
+                errorMessage = "Read range exceeds supported Int64 file offsets";
+                return false;
+            }
             KeyValuePair<string, string>[] headers =
             {
                 new KeyValuePair<string, string>("Range", "bytes=" + offset + "-" + endInclusive)
@@ -125,10 +137,24 @@ namespace DROPME.Utils
                 return true;
             }
 
-            if (response.StatusCode != HttpStatusCode.OK &&
-                response.StatusCode != HttpStatusCode.PartialContent)
+            if (response.StatusCode != HttpStatusCode.PartialContent)
             {
-                errorMessage = "Read request failed with HTTP " + (int)response.StatusCode;
+                errorMessage = "Range read expected HTTP 206 but received " + (int)response.StatusCode;
+                return false;
+            }
+            if (response.Body.LongLength != size)
+            {
+                errorMessage =
+                    "Range read length mismatch: expected=" + size +
+                    " actual=" + response.Body.LongLength;
+                return false;
+            }
+            if (response.ContentRange == null ||
+                response.ContentRange.From != (long)offset ||
+                response.ContentRange.To != (long)endInclusive)
+            {
+                errorMessage =
+                    "Range read Content-Range mismatch: expected=" + offset + "-" + endInclusive;
                 return false;
             }
 
@@ -310,6 +336,7 @@ namespace DROPME.Utils
                     client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
 
                 response.StatusCode = httpResponse.StatusCode;
+                response.ContentRange = httpResponse.Content.Headers.ContentRange;
                 response.Body = httpResponse.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
                 return true;
             }

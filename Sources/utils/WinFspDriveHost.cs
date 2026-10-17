@@ -390,18 +390,39 @@ namespace DROPME.Utils
 
                 if (handle.Stream != null)
                 {
-                    if (offset >= handle.LogicalSize)
+                    lock (handle.SyncRoot)
                     {
-                        return STATUS_END_OF_FILE;
-                    }
+                        if (offset >= handle.LogicalSize)
+                        {
+                            return STATUS_END_OF_FILE;
+                        }
 
-                    int count = (int)Math.Min((ulong)length, handle.LogicalSize - offset);
-                    byte[] bytes = new byte[count];
-                    handle.Stream.Position = (long)offset;
-                    int read = handle.Stream.Read(bytes, 0, bytes.Length);
-                    Marshal.Copy(bytes, 0, buffer, read);
-                    bytesTransferred = (uint)read;
-                    return STATUS_SUCCESS;
+                        int count = (int)Math.Min((ulong)length, handle.LogicalSize - offset);
+                        byte[] bytes = new byte[count];
+                        handle.Stream.Position = (long)offset;
+                        int totalRead = 0;
+                        while (totalRead < count)
+                        {
+                            int read = handle.Stream.Read(bytes, totalRead, count - totalRead);
+                            if (read <= 0)
+                            {
+                                break;
+                            }
+                            totalRead += read;
+                        }
+
+                        if (totalRead != count)
+                        {
+                            Log.Warn(
+                                "WinFsp local cache read length mismatch for " + handle.RemotePath +
+                                ": expected=" + count + " actual=" + totalRead);
+                            return STATUS_UNEXPECTED_IO_ERROR;
+                        }
+
+                        Marshal.Copy(bytes, 0, buffer, totalRead);
+                        bytesTransferred = (uint)totalRead;
+                        return STATUS_SUCCESS;
+                    }
                 }
 
                 if (offset >= handle.Metadata.Size)
@@ -653,20 +674,30 @@ namespace DROPME.Utils
                     return STATUS_ACCESS_DENIED;
                 }
 
-                string destination = ToRemotePath(newFileName);
-                if (!client_.MovePath(handle.RemotePath, destination, replaceIfExists, out string errorMessage))
+                lock (handle.SyncRoot)
                 {
-                    Log.Warn("WinFsp rename failed from " + handle.RemotePath + " to " + destination + ": " + errorMessage);
-                    return STATUS_UNEXPECTED_IO_ERROR;
-                }
+                    if (handle.Dirty && !Commit(handle, out string commitError))
+                    {
+                        Log.Warn(
+                            "WinFsp rename commit failed for " + handle.RemotePath + ": " + commitError);
+                        return STATUS_UNEXPECTED_IO_ERROR;
+                    }
 
-                handle.RemotePath = destination;
-                handle.DirectoryEntries = null;
-                if (TryGetMetadata(destination, out AndroidFsHttpClient.NodeMetadata metadata) && metadata.Exists)
-                {
-                    handle.Metadata = metadata;
+                    string destination = ToRemotePath(newFileName);
+                    if (!client_.MovePath(handle.RemotePath, destination, replaceIfExists, out string errorMessage))
+                    {
+                        Log.Warn("WinFsp rename failed from " + handle.RemotePath + " to " + destination + ": " + errorMessage);
+                        return STATUS_UNEXPECTED_IO_ERROR;
+                    }
+
+                    handle.RemotePath = destination;
+                    handle.DirectoryEntries = null;
+                    if (TryGetMetadata(destination, out AndroidFsHttpClient.NodeMetadata metadata) && metadata.Exists)
+                    {
+                        handle.Metadata = metadata;
+                    }
+                    return STATUS_SUCCESS;
                 }
-                return STATUS_SUCCESS;
             }
 
             /// <summary>
