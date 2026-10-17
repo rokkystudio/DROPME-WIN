@@ -39,6 +39,7 @@ namespace DROPME.Utils
                 public AndroidFsHttpClient.NodeMetadata Metadata { get; set; } = new AndroidFsHttpClient.NodeMetadata();
                 public FileStream? Stream { get; set; }
                 public string TempPath { get; set; } = string.Empty;
+                public object SyncRoot { get; } = new object();
                 public ulong LogicalSize { get; set; }
                 public ulong AllocationSize { get; set; }
                 public bool Dirty { get; set; }
@@ -306,18 +307,21 @@ namespace DROPME.Utils
                 {
                     return STATUS_FILE_IS_A_DIRECTORY;
                 }
-                if (!EnsureLocalFile(handle, true, out string errorMessage))
+                lock (handle.SyncRoot)
                 {
-                    Log.Warn("WinFsp overwrite cache failed for " + handle.RemotePath + ": " + errorMessage);
-                    return STATUS_UNEXPECTED_IO_ERROR;
-                }
+                    if (!EnsureLocalFile(handle, true, out string errorMessage))
+                    {
+                        Log.Warn("WinFsp overwrite cache failed for " + handle.RemotePath + ": " + errorMessage);
+                        return STATUS_UNEXPECTED_IO_ERROR;
+                    }
 
-                handle.Stream!.SetLength(0);
-                handle.LogicalSize = 0;
-                handle.AllocationSize = allocationSize;
-                handle.Dirty = true;
-                fileInfo = BuildFileInfo(handle, handle.LogicalSize);
-                return STATUS_SUCCESS;
+                    handle.Stream!.SetLength(0);
+                    handle.LogicalSize = 0;
+                    handle.AllocationSize = allocationSize;
+                    handle.Dirty = true;
+                    fileInfo = BuildFileInfo(handle, handle.LogicalSize);
+                    return STATUS_SUCCESS;
+                }
             }
 
             /// <summary>
@@ -346,19 +350,23 @@ namespace DROPME.Utils
             public override void Close(object fileNode, object fileDesc)
             {
                 RemoteHandle handle = (RemoteHandle)fileDesc;
+                bool deleteTempFile = true;
                 try
                 {
                     if (handle.Dirty && !handle.Deleted)
                     {
                         if (!Commit(handle, out string errorMessage))
                         {
-                            Log.Warn("WinFsp close upload failed for " + handle.RemotePath + ": " + errorMessage);
+                            deleteTempFile = false;
+                            Log.Warn(
+                                "WinFsp close upload failed for " + handle.RemotePath + ": " + errorMessage +
+                                ". Preserved writeback cache: " + handle.TempPath);
                         }
                     }
                 }
                 finally
                 {
-                    DisposeLocalFile(handle);
+                    DisposeLocalFile(handle, deleteTempFile);
                 }
             }
 
@@ -441,50 +449,53 @@ namespace DROPME.Utils
                 {
                     return STATUS_FILE_IS_A_DIRECTORY;
                 }
-                if (!EnsureLocalFile(handle, false, out string errorMessage))
+                lock (handle.SyncRoot)
                 {
-                    Log.Warn("WinFsp write cache failed for " + handle.RemotePath + ": " + errorMessage);
-                    return STATUS_UNEXPECTED_IO_ERROR;
-                }
-
-                FileStream stream = handle.Stream!;
-                ulong writeOffset = writeToEndOfFile ? handle.LogicalSize : offset;
-                uint writeLength = length;
-                if (constrainedIo)
-                {
-                    ulong writeLimit = Math.Max(handle.LogicalSize, handle.AllocationSize);
-                    if (writeLimit > 0)
+                    if (!EnsureLocalFile(handle, false, out string errorMessage))
                     {
-                        if (writeOffset >= writeLimit)
+                        Log.Warn("WinFsp write cache failed for " + handle.RemotePath + ": " + errorMessage);
+                        return STATUS_UNEXPECTED_IO_ERROR;
+                    }
+
+                    FileStream stream = handle.Stream!;
+                    ulong writeOffset = writeToEndOfFile ? handle.LogicalSize : offset;
+                    uint writeLength = length;
+                    if (constrainedIo)
+                    {
+                        ulong writeLimit = Math.Max(handle.LogicalSize, handle.AllocationSize);
+                        if (writeLimit > 0)
                         {
-                            fileInfo = BuildFileInfo(handle, handle.LogicalSize);
-                            return STATUS_SUCCESS;
+                            if (writeOffset >= writeLimit)
+                            {
+                                fileInfo = BuildFileInfo(handle, handle.LogicalSize);
+                                return STATUS_SUCCESS;
+                            }
+                            writeLength = (uint)Math.Min((ulong)writeLength, writeLimit - writeOffset);
                         }
-                        writeLength = (uint)Math.Min((ulong)writeLength, writeLimit - writeOffset);
                     }
-                }
 
-                byte[] bytes = new byte[writeLength];
-                if (writeLength > 0)
-                {
-                    Marshal.Copy(buffer, bytes, 0, (int)writeLength);
-                    stream.Position = (long)writeOffset;
-                    stream.Write(bytes, 0, bytes.Length);
-                    ulong writtenEnd = writeOffset + writeLength;
-                    if (writtenEnd > handle.LogicalSize)
+                    byte[] bytes = new byte[writeLength];
+                    if (writeLength > 0)
                     {
-                        handle.LogicalSize = writtenEnd;
+                        Marshal.Copy(buffer, bytes, 0, (int)writeLength);
+                        stream.Position = (long)writeOffset;
+                        stream.Write(bytes, 0, bytes.Length);
+                        ulong writtenEnd = writeOffset + writeLength;
+                        if (writtenEnd > handle.LogicalSize)
+                        {
+                            handle.LogicalSize = writtenEnd;
+                        }
+                        if (handle.LogicalSize > handle.AllocationSize)
+                        {
+                            handle.AllocationSize = AlignAllocation(handle.LogicalSize);
+                        }
+                        handle.Dirty = true;
                     }
-                    if (handle.LogicalSize > handle.AllocationSize)
-                    {
-                        handle.AllocationSize = AlignAllocation(handle.LogicalSize);
-                    }
-                    handle.Dirty = true;
-                }
 
-                bytesTransferred = writeLength;
-                fileInfo = BuildFileInfo(handle, handle.LogicalSize);
-                return STATUS_SUCCESS;
+                    bytesTransferred = writeLength;
+                    fileInfo = BuildFileInfo(handle, handle.LogicalSize);
+                    return STATUS_SUCCESS;
+                }
             }
 
             /// <summary>
@@ -569,35 +580,38 @@ namespace DROPME.Utils
                 {
                     return STATUS_FILE_IS_A_DIRECTORY;
                 }
-                if (!EnsureLocalFile(handle, false, out string errorMessage))
+                lock (handle.SyncRoot)
                 {
-                    Log.Warn("WinFsp resize cache failed for " + handle.RemotePath + ": " + errorMessage);
-                    return STATUS_UNEXPECTED_IO_ERROR;
-                }
+                    if (!EnsureLocalFile(handle, false, out string errorMessage))
+                    {
+                        Log.Warn("WinFsp resize cache failed for " + handle.RemotePath + ": " + errorMessage);
+                        return STATUS_UNEXPECTED_IO_ERROR;
+                    }
 
-                FileStream stream = handle.Stream!;
-                if (setAllocationSize)
-                {
-                    handle.AllocationSize = newSize;
-                    if (newSize < handle.LogicalSize)
+                    FileStream stream = handle.Stream!;
+                    if (setAllocationSize)
+                    {
+                        handle.AllocationSize = newSize;
+                        if (newSize < handle.LogicalSize)
+                        {
+                            handle.LogicalSize = newSize;
+                            stream.SetLength((long)Math.Min(newSize, (ulong)long.MaxValue));
+                            handle.Dirty = true;
+                        }
+                    }
+                    else
                     {
                         handle.LogicalSize = newSize;
+                        if (newSize > handle.AllocationSize)
+                        {
+                            handle.AllocationSize = AlignAllocation(newSize);
+                        }
                         stream.SetLength((long)Math.Min(newSize, (ulong)long.MaxValue));
                         handle.Dirty = true;
                     }
+                    fileInfo = BuildFileInfo(handle, handle.LogicalSize);
+                    return STATUS_SUCCESS;
                 }
-                else
-                {
-                    handle.LogicalSize = newSize;
-                    if (newSize > handle.AllocationSize)
-                    {
-                        handle.AllocationSize = AlignAllocation(newSize);
-                    }
-                    stream.SetLength((long)Math.Min(newSize, (ulong)long.MaxValue));
-                    handle.Dirty = true;
-                }
-                fileInfo = BuildFileInfo(handle, handle.LogicalSize);
-                return STATUS_SUCCESS;
             }
 
             /// <summary>
@@ -855,37 +869,50 @@ namespace DROPME.Utils
 
             private bool Commit(RemoteHandle handle, out string errorMessage)
             {
-                errorMessage = string.Empty;
-                if (!handle.Dirty || handle.Stream == null || handle.TempPath.Length == 0)
+                lock (handle.SyncRoot)
                 {
+                    errorMessage = string.Empty;
+                    if (!handle.Dirty || handle.Stream == null || handle.TempPath.Length == 0)
+                    {
+                        return true;
+                    }
+
+                    try
+                    {
+                        handle.Stream.SetLength((long)Math.Min(handle.LogicalSize, (ulong)long.MaxValue));
+                        handle.Stream.Flush(true);
+                    }
+                    catch (Exception exception)
+                    {
+                        errorMessage = exception.Message;
+                        return false;
+                    }
+
+                    if (!client_.UploadFile(handle.RemotePath, handle.TempPath, out errorMessage))
+                    {
+                        return false;
+                    }
+
+                    if (!TryGetMetadata(handle.RemotePath, out AndroidFsHttpClient.NodeMetadata metadata) || !metadata.Exists)
+                    {
+                        errorMessage = "Uploaded file metadata could not be confirmed";
+                        return false;
+                    }
+                    if (metadata.Size != handle.LogicalSize)
+                    {
+                        errorMessage =
+                            "Uploaded file size mismatch: expected=" + handle.LogicalSize +
+                            " actual=" + metadata.Size;
+                        return false;
+                    }
+
+                    handle.Metadata = metadata;
+                    handle.Dirty = false;
                     return true;
                 }
-
-                try
-                {
-                    handle.Stream.SetLength((long)Math.Min(handle.LogicalSize, (ulong)long.MaxValue));
-                    handle.Stream.Flush(true);
-                }
-                catch (Exception exception)
-                {
-                    errorMessage = exception.Message;
-                    return false;
-                }
-
-                if (!client_.UploadFile(handle.RemotePath, handle.TempPath, out errorMessage))
-                {
-                    return false;
-                }
-
-                handle.Dirty = false;
-                if (TryGetMetadata(handle.RemotePath, out AndroidFsHttpClient.NodeMetadata metadata) && metadata.Exists)
-                {
-                    handle.Metadata = metadata;
-                }
-                return true;
             }
 
-            private void DisposeLocalFile(RemoteHandle handle)
+            private void DisposeLocalFile(RemoteHandle handle, bool deleteTempFile = true)
             {
                 try
                 {
@@ -896,7 +923,7 @@ namespace DROPME.Utils
                 }
                 handle.Stream = null;
 
-                if (handle.TempPath.Length > 0)
+                if (handle.TempPath.Length > 0 && deleteTempFile)
                 {
                     TryDeleteTempFile(handle.TempPath);
                     handle.TempPath = string.Empty;

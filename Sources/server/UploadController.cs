@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using DROPME.Utils;
@@ -40,9 +41,47 @@ namespace DROPME.Server
                 return false;
             }
 
-            if (!request.Headers.ContainsKey("content-length"))
+            if (!request.Headers.TryGetValue("content-length", out string? contentLengthText) ||
+                !long.TryParse(contentLengthText, out long contentLength) ||
+                contentLength < 0)
             {
-                Log.Warn("Upload request without Content-Length");
+                SetJson(response, 411, "Length Required", new
+                {
+                    ok = false,
+                    error = "Content-Length is required"
+                });
+                return true;
+            }
+            if (contentLength != request.Body.LongLength)
+            {
+                SetJson(response, 400, "Bad Request", new
+                {
+                    ok = false,
+                    error = "Request body length does not match Content-Length"
+                });
+                return true;
+            }
+
+            if (!request.Headers.TryGetValue("x-dropme-sha256", out string? expectedSha256) ||
+                !IsSha256Hex(expectedSha256))
+            {
+                SetJson(response, 400, "Bad Request", new
+                {
+                    ok = false,
+                    error = "X-DROPME-SHA256 is required"
+                });
+                return true;
+            }
+
+            string receivedSha256 = ComputeSha256Hex(request.Body);
+            if (!string.Equals(receivedSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                SetJson(response, 422, "Unprocessable Content", new
+                {
+                    ok = false,
+                    error = "Request body SHA-256 mismatch"
+                });
+                return true;
             }
 
             Dictionary<string, string> query = ParseQuery(request.Query);
@@ -68,16 +107,37 @@ namespace DROPME.Server
                 return true;
             }
 
+            string stagingPath = string.Empty;
             try
             {
                 string folder = ResolveIncomingFolder(request);
                 string filePath = FileName.MakeUniquePath(folder, validation.SanitizedName);
+                stagingPath = Path.Combine(folder, ".dropme-" + Guid.NewGuid().ToString("N") + ".tmp");
+                using (FileStream output = new FileStream(stagingPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    output.Write(request.Body, 0, request.Body.Length);
+                    output.Flush(true);
+                }
 
-                using FileStream output = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
-                output.Write(request.Body, 0, request.Body.Length);
-                output.Flush();
+                FileInfo stagingFile = new FileInfo(stagingPath);
+                if (stagingFile.Length != contentLength)
+                {
+                    throw new IOException(
+                        "Stored upload length mismatch: expected=" + contentLength +
+                        " actual=" + stagingFile.Length);
+                }
+                string storedSha256 = ComputeSha256Hex(stagingPath);
+                if (!string.Equals(receivedSha256, storedSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new IOException("Stored upload SHA-256 mismatch");
+                }
 
-                Log.Info("Upload saved: " + filePath);
+                File.Move(stagingPath, filePath);
+                stagingPath = string.Empty;
+
+                Log.Info("Upload saved and verified: " + filePath);
+                response.Headers["X-DROPME-Length"] = contentLength.ToString();
+                response.Headers["X-DROPME-SHA256"] = storedSha256;
                 SetJson(response, 200, "OK", new
                 {
                     ok = true,
@@ -87,6 +147,17 @@ namespace DROPME.Server
             }
             catch (Exception exception)
             {
+                if (stagingPath.Length > 0)
+                {
+                    try
+                    {
+                        File.Delete(stagingPath);
+                    }
+                    catch
+                    {
+                    }
+                }
+
                 Log.Error("Upload handling failed: " + exception.Message);
                 SetJson(response, 500, "Internal Server Error", new
                 {
@@ -95,6 +166,35 @@ namespace DROPME.Server
                 });
                 return true;
             }
+        }
+
+        private static bool IsSha256Hex(string value)
+        {
+            if (value.Length != 64)
+            {
+                return false;
+            }
+            foreach (char character in value)
+            {
+                if (!Uri.IsHexDigit(character))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static string ComputeSha256Hex(byte[] bytes)
+        {
+            using SHA256 sha256 = SHA256.Create();
+            return Convert.ToHexString(sha256.ComputeHash(bytes)).ToLowerInvariant();
+        }
+
+        private static string ComputeSha256Hex(string filePath)
+        {
+            using FileStream stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using SHA256 sha256 = SHA256.Create();
+            return Convert.ToHexString(sha256.ComputeHash(stream)).ToLowerInvariant();
         }
 
         /// <summary>

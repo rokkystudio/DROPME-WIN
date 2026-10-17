@@ -5,6 +5,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace DROPME.Utils
@@ -136,8 +137,8 @@ namespace DROPME.Utils
         }
 
         /// <summary>
-        /// Загружает локальный файл через PUT и принимает HTTP 200, 201 или 204.
-        /// Размер запроса ограничен uint.MaxValue в соответствии с WinHTTP-реализацией исходного приложения.
+        /// Загружает локальный файл через PUT и подтверждает длину и SHA-256,
+        /// рассчитанные Android после повторного чтения сохранённого файла.
         /// </summary>
         public bool UploadFile(string path, string localFilePath, out string errorMessage)
         {
@@ -149,19 +150,20 @@ namespace DROPME.Utils
                 return false;
             }
 
-            if ((ulong)file.Length > uint.MaxValue)
-            {
-                errorMessage = "Temporary file is larger than the supported upload limit";
-                return false;
-            }
-
             try
             {
+                string expectedSha256 = ComputeSha256Hex(localFilePath);
+
                 using HttpClient client = CreateHttpClient();
+                client.Timeout = TimeSpan.FromHours(2);
                 using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Put, BuildAbsoluteUri(BuildFilePath(path)));
+                request.Headers.ExpectContinue = false;
+                request.Headers.TryAddWithoutValidation("X-DROPME-SHA256", expectedSha256);
+
                 using FileStream stream = new FileStream(localFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using StreamContent content = new StreamContent(stream, 64 * 1024);
                 content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+                content.Headers.ContentLength = file.Length;
                 request.Content = content;
 
                 using HttpResponseMessage response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
@@ -169,6 +171,21 @@ namespace DROPME.Utils
                 if (statusCode != 200 && statusCode != 201 && statusCode != 204)
                 {
                     errorMessage = "Upload request failed with HTTP " + statusCode;
+                    return false;
+                }
+
+                if (!TryGetSingleHeader(response, "X-DROPME-Length", out string storedLengthValue) ||
+                    !long.TryParse(storedLengthValue, NumberStyles.None, CultureInfo.InvariantCulture, out long storedLength) ||
+                    storedLength != file.Length)
+                {
+                    errorMessage = "Upload verification failed: stored length was not confirmed";
+                    return false;
+                }
+
+                if (!TryGetSingleHeader(response, "X-DROPME-SHA256", out string storedSha256) ||
+                    !string.Equals(storedSha256.Trim(), expectedSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    errorMessage = "Upload verification failed: SHA-256 mismatch";
                     return false;
                 }
 
@@ -244,6 +261,30 @@ namespace DROPME.Utils
             }
 
             return true;
+        }
+
+        private static string ComputeSha256Hex(string filePath)
+        {
+            using FileStream stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using SHA256 sha256 = SHA256.Create();
+            return Convert.ToHexString(sha256.ComputeHash(stream)).ToLowerInvariant();
+        }
+
+        private static bool TryGetSingleHeader(HttpResponseMessage response, string name, out string value)
+        {
+            value = string.Empty;
+            if (!response.Headers.TryGetValues(name, out IEnumerable<string>? values))
+            {
+                return false;
+            }
+
+            using IEnumerator<string> enumerator = values.GetEnumerator();
+            if (!enumerator.MoveNext())
+            {
+                return false;
+            }
+            value = enumerator.Current;
+            return !string.IsNullOrWhiteSpace(value);
         }
 
         private bool SendRequest(
