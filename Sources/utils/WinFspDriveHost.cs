@@ -43,6 +43,7 @@ namespace DROPME.Utils
                 public ulong LogicalSize { get; set; }
                 public ulong AllocationSize { get; set; }
                 public bool Dirty { get; set; }
+                public bool DeletePending { get; set; }
                 public bool Deleted { get; set; }
                 public List<AndroidFsHttpClient.DirectoryEntry>? DirectoryEntries { get; set; }
             }
@@ -335,13 +336,17 @@ namespace DROPME.Utils
                     return;
                 }
 
-                if (!client_.DeletePath(handle.RemotePath, out string errorMessage))
+                lock (handle.SyncRoot)
                 {
-                    Log.Warn("WinFsp delete failed for " + handle.RemotePath + ": " + errorMessage);
-                    return;
+                    handle.DeletePending = true;
+                    if (!client_.DeletePath(handle.RemotePath, out string errorMessage))
+                    {
+                        Log.Warn("WinFsp delete failed for " + handle.RemotePath + ": " + errorMessage);
+                        return;
+                    }
+                    handle.Deleted = true;
+                    handle.Dirty = false;
                 }
-                handle.Deleted = true;
-                handle.Dirty = false;
             }
 
             /// <summary>
@@ -353,14 +358,32 @@ namespace DROPME.Utils
                 bool deleteTempFile = true;
                 try
                 {
-                    if (handle.Dirty && !handle.Deleted)
+                    lock (handle.SyncRoot)
                     {
-                        if (!Commit(handle, out string errorMessage))
+                        if (handle.DeletePending && !handle.Deleted)
                         {
-                            deleteTempFile = false;
-                            Log.Warn(
-                                "WinFsp close upload failed for " + handle.RemotePath + ": " + errorMessage +
-                                ". Preserved writeback cache: " + handle.TempPath);
+                            if (client_.DeletePath(handle.RemotePath, out string deleteError))
+                            {
+                                handle.Deleted = true;
+                                handle.Dirty = false;
+                            }
+                            else
+                            {
+                                Log.Warn(
+                                    "WinFsp close delete retry failed for " + handle.RemotePath + ": " + deleteError);
+                            }
+                            return;
+                        }
+
+                        if (handle.Dirty && !handle.Deleted)
+                        {
+                            if (!Commit(handle, out string errorMessage))
+                            {
+                                deleteTempFile = false;
+                                Log.Warn(
+                                    "WinFsp close upload failed for " + handle.RemotePath + ": " + errorMessage +
+                                    ". Preserved writeback cache: " + handle.TempPath);
+                            }
                         }
                     }
                 }

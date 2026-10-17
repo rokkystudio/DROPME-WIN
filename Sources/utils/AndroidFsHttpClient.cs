@@ -251,9 +251,20 @@ namespace DROPME.Utils
             }
 
             if (response.StatusCode != HttpStatusCode.OK &&
-                response.StatusCode != HttpStatusCode.NoContent)
+                response.StatusCode != HttpStatusCode.NoContent &&
+                response.StatusCode != HttpStatusCode.NotFound)
             {
                 errorMessage = "Delete request failed with HTTP " + (int)response.StatusCode;
+                return false;
+            }
+
+            if (!GetMetadata(path, out NodeMetadata metadata, out errorMessage))
+            {
+                return false;
+            }
+            if (metadata.Exists)
+            {
+                errorMessage = "Delete verification failed: remote path still exists";
                 return false;
             }
 
