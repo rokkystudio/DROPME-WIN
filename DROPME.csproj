@@ -16,9 +16,9 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
-    <Version>1.2.0</Version>
-    <AssemblyVersion>1.2.0.0</AssemblyVersion>
-    <FileVersion>1.2.0.0</FileVersion>
+    <Version>1.2.10</Version>
+    <AssemblyVersion>1.2.10.0</AssemblyVersion>
+    <FileVersion>1.2.10.0</FileVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Platform)' == 'x64'">
@@ -41,6 +41,8 @@
   <ItemGroup>
     <Compile Include="..\Shared\FlagsPack\CountryFlags.cs" Link="Shared\FlagsPack\CountryFlags.cs" />
     <Compile Include="..\Shared\NeoUI\NeoThemePalette.cs" Link="Shared\NeoUI\NeoThemePalette.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoIcons.cs" Link="Shared\NeoUI\NeoIcons.cs" />
+    <Compile Include="..\Shared\NeoUI\NeoIconButton.cs" Link="Shared\NeoUI\NeoIconButton.cs" />
     <Compile Include="..\Shared\NeoUI\NeoAssetPaths.cs" Link="Shared\NeoUI\NeoAssetPaths.cs" />
     <Compile Include="..\Shared\NeoUI\NeoAssetService.cs" Link="Shared\NeoUI\NeoAssetService.cs" />
     <Compile Include="..\Shared\NeoUI\NeoTrayMenuStyle.cs" Link="Shared\NeoUI\NeoTrayMenuStyle.cs" />

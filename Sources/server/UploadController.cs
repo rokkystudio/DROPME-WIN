@@ -5,12 +5,13 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using DROPME.Services;
 using DROPME.Utils;
 
 namespace DROPME.Server
 {
     /// <summary>
-    /// Обрабатывает PUT upload endpoints DROPME и группирует последовательные передачи по IP в одну дневную папку.
+    /// Обрабатывает разрешённые Share upload endpoints DROPME и группирует последовательные передачи в дневные папки.
     /// </summary>
     internal sealed class UploadController
     {
@@ -27,9 +28,15 @@ namespace DROPME.Server
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
 
+        private readonly DeviceAuthorizationService authorizationService_;
         private readonly object uploadBatchesMutex_ = new object();
         private readonly Dictionary<string, UploadBatchState> uploadBatches_ =
             new Dictionary<string, UploadBatchState>(StringComparer.Ordinal);
+
+        public UploadController(DeviceAuthorizationService authorizationService)
+        {
+            authorizationService_ = authorizationService;
+        }
 
         /// <summary>
         /// Обрабатывает PUT /dropme/upload и /wifidrop/upload и формирует JSON-ответ.
@@ -42,6 +49,15 @@ namespace DROPME.Server
                 return false;
             }
 
+            if (!authorizationService_.Authorize(request, "share", string.Empty, false))
+            {
+                SetJson(response, 403, "Forbidden", new
+                {
+                    ok = false,
+                    error = "Device is not authorized for Share"
+                });
+                return true;
+            }
             if (!request.Headers.TryGetValue("content-length", out string? contentLengthText) ||
                 !long.TryParse(contentLengthText, out long contentLength) ||
                 contentLength < 0)

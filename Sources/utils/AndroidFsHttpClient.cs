@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
+using DROPME.Services;
 
 namespace DROPME.Utils
 {
@@ -518,18 +519,17 @@ namespace DROPME.Utils
                 UseProxy = false
             };
 
-            return new HttpClient(handler, true)
-            {
-                DefaultRequestHeaders =
-                {
-                    UserAgent =
-                    {
-                        new ProductInfoHeaderValue("DROPME-WinFsp", "1.0")
-                    }
-                }
-            };
+            HttpClient client = new HttpClient(handler, true);
+            client.DefaultRequestHeaders.UserAgent.Add(
+                new ProductInfoHeaderValue("DROPME-WinFsp", "1.0"));
+            client.DefaultRequestHeaders.TryAddWithoutValidation(
+                "X-DROPME-Device-ID",
+                AppSettings.DeviceId);
+            client.DefaultRequestHeaders.TryAddWithoutValidation(
+                "X-DROPME-Device-Name",
+                AppSettings.DeviceName);
+            return client;
         }
-
         private Uri BuildAbsoluteUri(string pathAndQuery)
         {
             return new Uri("http://" + host_ + ":" + port_.ToString(CultureInfo.InvariantCulture) + pathAndQuery, UriKind.Absolute);

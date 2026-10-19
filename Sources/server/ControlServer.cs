@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using DROPME.Clients;
+using DROPME.Services;
 using DROPME.Utils;
 
 namespace DROPME.Server
@@ -20,7 +21,7 @@ namespace DROPME.Server
     }
 
     /// <summary>
-    /// Обрабатывает control endpoints DROPME и управляет жизненным циклом Android-сессий.
+    /// Обрабатывает универсальные control endpoints DROPME, разрешения и совместимые legacy-сессии.
     /// Поля connect JSON извлекаются независимо, как в исходном C++ обработчике.
     /// </summary>
     internal sealed class ControlServer
@@ -28,13 +29,15 @@ namespace DROPME.Server
         private const int MaxComputerNameLength = 15;
 
         private readonly ClientManager clientManager_;
+        private readonly DeviceAuthorizationService authorizationService_;
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern bool GetComputerName(StringBuilder buffer, ref uint size);
 
-        public ControlServer(ClientManager clientManager)
+        public ControlServer(ClientManager clientManager, DeviceAuthorizationService authorizationService)
         {
             clientManager_ = clientManager;
+            authorizationService_ = authorizationService;
         }
 
         /// <summary>
@@ -48,6 +51,11 @@ namespace DROPME.Server
                 return ControlRequestDisposition.ResponseReady;
             }
 
+            if (request.Method == "POST" && MatchesPath(request.Path, "/authorize"))
+            {
+                HandleAuthorizeRequest(request, response);
+                return ControlRequestDisposition.ResponseReady;
+            }
             if (request.Method == "POST" && MatchesPath(request.Path, "/client/connect"))
             {
                 HandleConnectRequest(request, response);
@@ -78,14 +86,64 @@ namespace DROPME.Server
             UploadController.SetJson(response, 200, "OK", new
             {
                 app = "DROPME",
-                role = "windows-server",
+                role = "device",
                 protocolVersion = Protocol.ProtocolVersion,
-                deviceName = GetComputerNameUtf8(),
+                deviceId = AppSettings.DeviceId,
+                deviceName = AppSettings.DeviceName,
+                deviceType = "windows",
                 tcpPort = Protocol.TcpPort,
-                udpPort = Protocol.DiscoveryPort
+                udpPort = Protocol.DiscoveryPort,
+                filePort = Protocol.TcpPort,
+                fileAccessAvailable = true,
+                shareAvailable = true
             });
         }
 
+        /// <summary>
+        /// Запрашивает разрешение пользователя на короткую Share-сессию или обычный файловый доступ.
+        /// </summary>
+        private void HandleAuthorizeRequest(HttpRequest request, HttpResponse response)
+        {
+            string purpose = GetQueryValue(request.Query, "purpose");
+            if (purpose != "share" && purpose != "files")
+            {
+                purpose = "files";
+            }
+
+            string itemName = GetQueryValue(request.Query, "name");
+            bool accepted = authorizationService_.Authorize(
+                request,
+                purpose,
+                itemName,
+                true);
+
+            UploadController.SetJson(
+                response,
+                accepted ? 200 : 403,
+                accepted ? "OK" : "Forbidden",
+                new
+                {
+                    accepted,
+                    deviceId = AppSettings.DeviceId
+                });
+        }
+
+        private static string GetQueryValue(string query, string key)
+        {
+            foreach (string part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                int separator = part.IndexOf('=');
+                string rawKey = separator < 0 ? part : part.Substring(0, separator);
+                if (!string.Equals(Uri.UnescapeDataString(rawKey), key, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string rawValue = separator < 0 ? string.Empty : part.Substring(separator + 1);
+                return Uri.UnescapeDataString(rawValue.Replace("+", " ", StringComparison.Ordinal));
+            }
+            return string.Empty;
+        }
         /// <summary>
         /// Принимает параметры Android-клиента, выполняет WebDAV mount и регистрирует pending session.
         /// Отсутствующие поля получают те же значения по умолчанию, что и в исходном C++ коде.

@@ -64,6 +64,7 @@ namespace DROPME
             ApplyLocalization();
             ApplyThemeState();
             RefreshDevices();
+            InitializeDeviceDiscovery();
             RebuildNotifyMenu();
 
             if (!serverStarted)
@@ -82,6 +83,8 @@ namespace DROPME
         private void RefreshTimer_OnTick(object? sender, EventArgs e)
         {
             RefreshDevices();
+            RefreshLocalDeviceIdentity();
+            StartRemoteScanIfDue();
         }
 
         /// <summary>
@@ -441,7 +444,7 @@ namespace DROPME
 
         private void UseWebInterfaceCheckBox_OnClick(object sender, RoutedEventArgs e)
         {
-            SetUseWebInterface(UseWebInterfaceCheckBox.IsChecked == true);
+            SetUseWebInterface(UseWebInterfaceCheckBox.IsChecked != true);
         }
 
         private void OpenIncomingButton_OnClick(object sender, RoutedEventArgs e)
@@ -511,6 +514,7 @@ namespace DROPME
             WpfThemeService.Apply(Application.Current);
             ApplyThemeState();
             RefreshDevices();
+            InitializeDeviceDiscovery();
             RebuildNotifyMenu();
         }
 
@@ -518,6 +522,7 @@ namespace DROPME
         {
             ApplyLocalization();
             RefreshDevices();
+            InitializeDeviceDiscovery();
             RebuildNotifyMenu();
         }
 
@@ -527,18 +532,26 @@ namespace DROPME
         private void ApplyLocalization()
         {
             TitleBar.TitleText = LocalizationService.Text("app_title");
-            TitleBar.SubtitleText = server_.IsRunning
-                ? LocalizationService.Text("status_running")
-                : LocalizationService.Text("status_stopped");
-            ServerTitleText.Text = LocalizationService.Text("status_title");
+            TitleBar.SubtitleText = LocalizationService.Text("main_header_subtitle");
+            ServerTitleText.Text = LocalizationService.Text("my_device");
             ServerDescriptionText.Text = server_.IsRunning
                 ? LocalizationService.Text("status_running")
                 : LocalizationService.Text("status_stopped");
+            MyStorageTitleText.Text = LocalizationService.Text("my_storage");
+            WinFspTitleText.Text = "WinFsp";
             DevicesTitleText.Text = LocalizationService.Text("devices");
+            NetworkDevicesTitleText.Text = LocalizationService.Text("network_devices");
+            TrustedDevicesTitleText.Text = LocalizationService.Text("trusted_devices");
+            AllowedDevicesTitleText.Text = LocalizationService.Text("allowed_devices");
+            BlockedDevicesTitleText.Text = LocalizationService.Text("blocked_devices");
+            SaveDeviceNameButton.Content = LocalizationService.Text("save_device_name");
+            DeviceServiceCheckBox.Content = LocalizationService.Text("device_service_enabled");
             OpenIncomingButton.Content = LocalizationService.Text("open_incoming");
             UpdateAutostartCheckBox();
             UpdateUseWebInterfaceCheckBox();
             UpdateHeaderButtons();
+            RenderNetworkDevices();
+            RefreshTrustLists();
         }
 
         /// <summary>
@@ -573,10 +586,141 @@ namespace DROPME
             AutostartCheckBox.IsChecked = autoStart_.IsEnabled();
         }
 
+        /// <summary>
+        /// Показывает доступные локальные диски и профиль пользователя.
+        /// Изменение галочки применяется к новым файловым запросам без перезапуска сервера.
+        /// </summary>
+        private void RenderMyStorages()
+        {
+            MyStorageRootsPanel.Children.Clear();
+            foreach (WindowsStorageService.StorageRoot root in WindowsStorageService.GetRoots())
+            {
+                Grid row = new Grid
+                {
+                    Margin = new Thickness(0, 0, 0, 10)
+                };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                CheckBox checkBox = new CheckBox
+                {
+                    Tag = root.Id,
+                    IsChecked = root.IsEnabled,
+                    IsEnabled = root.IsAvailable,
+                    Style = (Style)FindResource("OptionCheckBoxStyle"),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                checkBox.Click += StorageRootCheckBox_OnClick;
+                Grid.SetColumn(checkBox, 0);
+                row.Children.Add(checkBox);
+
+                TextBlock icon = new TextBlock
+                {
+                    Text = root.IsDriveRoot ? "\uE7F1" : "\uE8B7",
+                    FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 16,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(4, 0, 8, 0)
+                };
+                Grid.SetColumn(icon, 1);
+                row.Children.Add(icon);
+
+                StackPanel description = new StackPanel();
+                description.Children.Add(new TextBlock
+                {
+                    Text = root.DisplayName,
+                    FontSize = 13,
+                    FontWeight = FontWeights.SemiBold
+                });
+                description.Children.Add(new TextBlock
+                {
+                    Text = root.Path + (root.Description.Length == 0
+                        ? string.Empty
+                        : "  •  " + root.Description) +
+                           (root.IsAvailable
+                               ? string.Empty
+                               : "  •  " + LocalizationService.Text("storage_unavailable")),
+                    Margin = new Thickness(0, 2, 0, 0),
+                    FontSize = 11,
+                    Foreground = (System.Windows.Media.Brush)Application.Current.Resources["MutedTextBrush"],
+                    TextWrapping = TextWrapping.Wrap
+                });
+                Grid.SetColumn(description, 2);
+                row.Children.Add(description);
+
+                if (root.CanRemove)
+                {
+                    NeoIconButton remove = new NeoIconButton
+                    {
+                        Tag = root.Id,
+                        Icon = NeoIcons.Remove,
+                        Margin = new Thickness(8, 0, 0, 0)
+                    };
+                    remove.Click += RemoveStorageRootButton_OnClick;
+                    Grid.SetColumn(remove, 3);
+                    row.Children.Add(remove);
+                }
+
+                MyStorageRootsPanel.Children.Add(row);
+            }
+        }
+
+        private void AddStorageRootButton_OnClick(object sender, RoutedEventArgs e)
+        {
+            using Forms.FolderBrowserDialog dialog = new Forms.FolderBrowserDialog
+            {
+                Description = LocalizationService.Text("storage_add_folder"),
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = false
+            };
+            if (dialog.ShowDialog() != Forms.DialogResult.OK ||
+                string.IsNullOrWhiteSpace(dialog.SelectedPath))
+            {
+                return;
+            }
+
+            WindowsStorageService.AddCustomRoot(dialog.SelectedPath);
+            RenderMyStorages();
+        }
+
+        private void RemoveStorageRootButton_OnClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button || button.Tag is not string rootId)
+            {
+                return;
+            }
+
+            WindowsStorageService.RemoveCustomRoot(rootId);
+            RenderMyStorages();
+        }
+
+        private void StorageRootCheckBox_OnClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is not CheckBox checkBox || checkBox.Tag is not string rootId)
+            {
+                return;
+            }
+
+            WindowsStorageService.SetEnabled(rootId, checkBox.IsChecked == true);
+            RenderMyStorages();
+        }
+
         private void UpdateUseWebInterfaceCheckBox()
         {
-            UseWebInterfaceCheckBox.Content = LocalizationService.Text("use_web_interface");
-            UseWebInterfaceCheckBox.IsChecked = AppSettings.UseWebInterface;
+            Version? installedVersion = WinFspDriveHost.InstalledRuntimeVersion;
+            bool installed = installedVersion != null;
+
+            UseWebInterfaceCheckBox.Content = LocalizationService.Text("use_winfsp");
+            UseWebInterfaceCheckBox.IsEnabled = installed;
+            UseWebInterfaceCheckBox.IsChecked = installed && !AppSettings.UseWebInterface;
+
+            WinFspStatusText.Text = installed
+                ? string.Format(
+                    LocalizationService.Text("winfsp_installed_version"),
+                    installedVersion)
+                : LocalizationService.Text("winfsp_not_installed");
         }
 
         /// <summary>
@@ -663,6 +807,7 @@ namespace DROPME
             }
             disposed_ = true;
 
+            DisposeDeviceDiscovery();
             refreshTimer_.Stop();
             refreshTimer_.Tick -= RefreshTimer_OnTick;
             ThemeService.ThemeChanged -= ThemeService_ThemeChanged;

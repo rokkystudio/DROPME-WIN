@@ -5,7 +5,7 @@ using System.Diagnostics;
 namespace DROPME.Clients
 {
     /// <summary>
-    /// Управляет подключенными Android-устройствами и жизненным циклом их control session.
+    /// Управляет подключенными DROPME-устройствами и жизненным циклом их локальных и control session.
     /// Для timeout используется монотонный Stopwatch, соответствующий std::chrono::steady_clock исходного приложения.
     /// </summary>
     internal sealed class ClientManager
@@ -140,7 +140,8 @@ namespace DROPME.Clients
                 List<string> ids = new List<string>();
                 foreach (KeyValuePair<string, AndroidClient> pair in clients_)
                 {
-                    if (now - pair.Value.LastActivityTimestamp >= timeoutTicks)
+                    if (!pair.Value.PersistentLocalConnection &&
+                        now - pair.Value.LastActivityTimestamp >= timeoutTicks)
                     {
                         ids.Add(pair.Key);
                         removed.Add(pair.Value.Clone());

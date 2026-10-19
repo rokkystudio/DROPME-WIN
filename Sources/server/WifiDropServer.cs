@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using DROPME.Clients;
+using DROPME.Services;
 using DROPME.Utils;
 
 namespace DROPME.Server
@@ -22,7 +23,9 @@ namespace DROPME.Server
         private static readonly TimeSpan StaleUploadTempAge = TimeSpan.FromDays(1);
 
         private readonly ClientManager clientManager_;
+        private readonly DeviceAuthorizationService authorizationService_;
         private readonly UploadController uploadController_;
+        private readonly FileAccessController fileAccessController_;
         private readonly ControlServer controlServer_;
         private readonly DiscoveryResponder discoveryResponder_;
         private readonly object activeSocketsMutex_ = new object();
@@ -36,12 +39,16 @@ namespace DROPME.Server
         public WifiDropServer(ClientManager clientManager)
         {
             clientManager_ = clientManager;
-            uploadController_ = new UploadController();
-            controlServer_ = new ControlServer(clientManager);
+            authorizationService_ = new DeviceAuthorizationService();
+            uploadController_ = new UploadController(authorizationService_);
+            fileAccessController_ = new FileAccessController(authorizationService_);
+            controlServer_ = new ControlServer(clientManager, authorizationService_);
             discoveryResponder_ = new DiscoveryResponder();
         }
 
         public bool IsRunning => running_;
+
+        public DeviceTrustStore TrustStore => authorizationService_.TrustStore;
 
         /// <summary>
         /// Запускает TCP listener с exclusive address use, UDP discovery responder и maintenance loop.
@@ -195,7 +202,8 @@ namespace DROPME.Server
 
                 if (disposition == ControlRequestDisposition.NotHandled)
                 {
-                    if (!uploadController_.HandleRequest(request, response))
+                    if (!uploadController_.HandleRequest(request, response) &&
+                        !fileAccessController_.HandleRequest(request, response))
                     {
                         response.StatusCode = 404;
                         response.ReasonPhrase = "Not Found";
@@ -330,8 +338,7 @@ namespace DROPME.Server
             int initialBodySize = Math.Max(0, all.Length - bodyOffset);
 
             bool isUploadRequest =
-                string.Equals(request.Method, "PUT", StringComparison.Ordinal) &&
-                (request.Path == "/dropme/upload" || request.Path == "/wifidrop/upload");
+                string.Equals(request.Method, "PUT", StringComparison.Ordinal);
 
             if (isUploadRequest)
             {
@@ -586,15 +593,32 @@ namespace DROPME.Server
                         .Append("\r\n");
                 }
 
+                long contentLength = response.BodyFilePath.Length > 0
+                    ? response.BodyFileLength
+                    : response.Body.LongLength;
                 headers.Append("Content-Length: ")
-                    .Append(response.Body.Length)
+                    .Append(contentLength)
                     .Append("\r\n");
                 headers.Append("Connection: close\r\n\r\n");
 
                 NetworkStream stream = clientSocket.GetStream();
                 byte[] headerBytes = Encoding.ASCII.GetBytes(headers.ToString());
                 stream.Write(headerBytes, 0, headerBytes.Length);
-                stream.Write(response.Body, 0, response.Body.Length);
+                if (response.BodyFilePath.Length > 0)
+                {
+                    using FileStream file = new FileStream(
+                        response.BodyFilePath,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.Read,
+                        1024 * 1024,
+                        FileOptions.SequentialScan);
+                    file.CopyTo(stream, 1024 * 1024);
+                }
+                else
+                {
+                    stream.Write(response.Body, 0, response.Body.Length);
+                }
                 stream.Flush();
                 return true;
             }

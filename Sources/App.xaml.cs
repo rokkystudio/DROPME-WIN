@@ -30,12 +30,12 @@ namespace DROPME
 
             clientManager_ = new ClientManager();
             server_ = new WifiDropServer(clientManager_);
-            bool serverStarted = server_.Start();
+            bool serverStarted = AppSettings.DeviceServiceEnabled && server_.Start();
 
             mainWindow_ = new MainWindow(clientManager_, server_, new AutoStart(), serverStarted);
             MainWindow = mainWindow_;
 
-            if (!serverStarted)
+            if (AppSettings.DeviceServiceEnabled && !serverStarted)
             {
                 Log.Error("Failed to start server");
                 mainWindow_.ShowNotification(

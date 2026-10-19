@@ -1,27 +1,22 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using DROPME.Services;
 using DROPME.Utils;
 
 namespace DROPME.Server
 {
     /// <summary>
-    /// Отвечает на UDP discovery datagram для поиска Windows-сервера в локальной сети.
+    /// Отвечает на UDP discovery datagram identity текущего DROPME-устройства.
     /// </summary>
     internal sealed class DiscoveryResponder : IDisposable
     {
-        private const int MaxComputerNameLength = 15;
-
         private readonly object mutex_ = new object();
         private UdpClient? udpClient_;
         private Thread? thread_;
         private volatile bool running_;
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern bool GetComputerName(StringBuilder buffer, ref uint size);
 
         /// <summary>
         /// Запускает UDP responder на порту протокола с SO_REUSEADDR.
@@ -85,7 +80,7 @@ namespace DROPME.Server
         }
 
         /// <summary>
-        /// Принимает только DROPME_DISCOVER_V1 и WIFIDROP_DISCOVER_V1 и отвечает параметрами TCP endpoint.
+        /// Принимает discovery datagram и возвращает protocol v3 identity без привязки доверия к IP.
         /// </summary>
         private void RunLoop()
         {
@@ -106,10 +101,15 @@ namespace DROPME.Server
                     byte[] responseBytes = UploadController.SerializeJson(new
                     {
                         app = "DROPME",
-                        role = "windows-server",
+                        role = "device",
                         protocolVersion = Protocol.ProtocolVersion,
-                        deviceName = GetComputerNameUtf8(),
-                        tcpPort = Protocol.TcpPort
+                        deviceId = AppSettings.DeviceId,
+                        deviceName = AppSettings.DeviceName,
+                        deviceType = "windows",
+                        tcpPort = Protocol.TcpPort,
+                        filePort = Protocol.TcpPort,
+                        fileAccessAvailable = true,
+                        shareAvailable = true
                     });
 
                     udpClient_!.Send(responseBytes, responseBytes.Length, remote);
@@ -126,13 +126,6 @@ namespace DROPME.Server
                     }
                 }
             }
-        }
-
-        private static string GetComputerNameUtf8()
-        {
-            StringBuilder computerName = new StringBuilder(MaxComputerNameLength + 1);
-            uint size = (uint)computerName.Capacity;
-            return GetComputerName(computerName, ref size) ? computerName.ToString() : "Windows PC";
         }
 
         public void Dispose()

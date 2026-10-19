@@ -18,6 +18,11 @@ namespace DROPME.Utils
     /// </summary>
     internal static class WinFspDriveHost
     {
+        /// <summary>
+        /// Возвращает установленную версию WinFsp или null, если runtime не найден.
+        /// </summary>
+        public static Version? InstalledRuntimeVersion => GetInstalledRuntimeVersion();
+
         private sealed class MountedDrive
         {
             public MountedDrive(AndroidRemoteFileSystem fileSystem, FileSystemHost host, string driveLetter)

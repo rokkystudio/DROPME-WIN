@@ -3,13 +3,13 @@ using System;
 namespace DROPME.Server
 {
     /// <summary>
-    /// Содержит сетевые параметры протокола DROPME.
+    /// Содержит сетевые параметры универсального протокола DROPME device-to-device.
     /// </summary>
     internal static class Protocol
     {
         public const ushort DiscoveryPort = 49230;
         public const ushort TcpPort = 49231;
-        public const int ProtocolVersion = 2;
+        public const int ProtocolVersion = 3;
         public static readonly TimeSpan ControlHeartbeatInterval = TimeSpan.FromMilliseconds(2000);
         public static readonly TimeSpan ControlDisconnectTimeout = TimeSpan.FromMilliseconds(6000);
     }

@@ -22,7 +22,7 @@ namespace DROPME.Clients
     }
 
     /// <summary>
-    /// Хранит параметры подключенного Android-устройства и его control session.
+    /// Хранит параметры подключенного удалённого DROPME-устройства и его файловой/control session.
     /// </summary>
     internal sealed class AndroidClient
     {
@@ -50,6 +50,7 @@ namespace DROPME.Clients
         public string MountError { get; set; } = string.Empty;
         public string DriveName { get; set; } = string.Empty;
         public AndroidSessionState SessionState { get; set; } = AndroidSessionState.Pending;
+        public bool PersistentLocalConnection { get; set; }
         public long LastActivityTimestamp { get; set; } = Stopwatch.GetTimestamp();
 
         /// <summary>

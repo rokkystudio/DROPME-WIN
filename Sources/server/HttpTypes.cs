@@ -22,7 +22,7 @@ namespace DROPME.Server
     }
 
     /// <summary>
-    /// Описывает HTTP-ответ для внутренних обработчиков DROPME.
+    /// Описывает HTTP-ответ и при необходимости потоковый файл для внутренних обработчиков DROPME.
     /// </summary>
     internal sealed class HttpResponse
     {
@@ -30,5 +30,7 @@ namespace DROPME.Server
         public string ReasonPhrase { get; set; } = "OK";
         public Dictionary<string, string> Headers { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
         public byte[] Body { get; set; } = Array.Empty<byte>();
+        public string BodyFilePath { get; set; } = string.Empty;
+        public long BodyFileLength { get; set; }
     }
 }
