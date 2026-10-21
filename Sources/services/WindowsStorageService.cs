@@ -25,26 +25,14 @@ namespace DROPME.Services
             public bool CanRemove { get; init; }
         }
 
+        /// <summary>
+        /// Возвращает доступные хранилища в порядке: локальные диски, профиль пользователя,
+        /// затем пользовательские каталоги.
+        /// </summary>
         public static IReadOnlyList<StorageRoot> GetRoots()
         {
             HashSet<string> enabled = ParseEnabledRootIds();
             List<StorageRoot> roots = new List<StorageRoot>();
-
-            string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            if (!string.IsNullOrWhiteSpace(profile) && Directory.Exists(profile))
-            {
-                roots.Add(new StorageRoot
-                {
-                    Id = "profile",
-                    DisplayName = LocalizationService.Text("storage_user_profile"),
-                    Path = Path.GetFullPath(profile),
-                    Description = string.Empty,
-                    IsEnabled = enabled.Contains("profile"),
-                    IsDriveRoot = false,
-                    IsAvailable = true,
-                    CanRemove = false
-                });
-            }
 
             foreach (DriveInfo drive in DriveInfo.GetDrives()
                          .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
@@ -63,12 +51,30 @@ namespace DROPME.Services
                 roots.Add(new StorageRoot
                 {
                     Id = id,
-                    DisplayName = drive.Name.TrimEnd('\\'),
+                    DisplayName = string.Format(
+                        LocalizationService.Text("storage_drive"),
+                        drive.Name.TrimEnd('\\')),
                     Path = Path.GetFullPath(drive.RootDirectory.FullName),
                     Description = format.Length == 0 ? volume : volume + " • " + format,
                     IsEnabled = enabled.Contains(id),
                     IsDriveRoot = true,
                     IsAvailable = drive.IsReady,
+                    CanRemove = false
+                });
+            }
+
+            string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(profile) && Directory.Exists(profile))
+            {
+                roots.Add(new StorageRoot
+                {
+                    Id = "profile",
+                    DisplayName = LocalizationService.Text("storage_user_profile"),
+                    Path = Path.GetFullPath(profile),
+                    Description = string.Empty,
+                    IsEnabled = enabled.Contains("profile"),
+                    IsDriveRoot = false,
+                    IsAvailable = true,
                     CanRemove = false
                 });
             }

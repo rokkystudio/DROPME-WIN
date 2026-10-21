@@ -5,12 +5,11 @@ using System.Globalization;
 namespace DROPME.Services
 {
     /// <summary>
-    /// Предоставляет русские и английские строки интерфейса DROPME, поддерживает автоматический выбор
-    /// по системному языку Windows и сохраняет выбранный пользователем режим языка.
+    /// Предоставляет русские и английские строки интерфейса DROPME и хранит только конкретный
+    /// выбранный язык. Системный язык используется один раз при первичной инициализации настроек.
     /// </summary>
     internal static class LocalizationService
     {
-        public const string AutomaticLanguage = "auto";
         public const string EnglishLanguage = "en";
         public const string RussianLanguage = "ru";
 
@@ -23,7 +22,11 @@ namespace DROPME.Services
                     ["status_title"] = "Сервер DROPME",
                     ["my_device"] = "Мое устройство",
                     ["my_storage"] = "Мои хранилища",
+                    ["incoming_files"] = "Входящие файлы",
+                    ["incoming_choose_directory"] = "Выбрать папку",
+                    ["incoming_date_folders"] = "Создавать папки по дате",
                     ["storage_user_profile"] = "Профиль пользователя",
+                    ["storage_drive"] = "Диск {0}",
                     ["storage_add_folder"] = "Добавить папку",
                     ["storage_unavailable"] = "Недоступно",
                     ["main_header_subtitle"] = "Устройства и файлы",
@@ -91,7 +94,11 @@ namespace DROPME.Services
                     ["status_title"] = "DROPME Server",
                     ["my_device"] = "My device",
                     ["my_storage"] = "My storage",
+                    ["incoming_files"] = "Incoming files",
+                    ["incoming_choose_directory"] = "Choose folder",
+                    ["incoming_date_folders"] = "Create folders by date",
                     ["storage_user_profile"] = "User profile",
+                    ["storage_drive"] = "Drive {0}",
                     ["storage_add_folder"] = "Add folder",
                     ["storage_unavailable"] = "Unavailable",
                     ["main_header_subtitle"] = "Devices and files",
@@ -159,11 +166,11 @@ namespace DROPME.Services
 
         public static string CurrentLanguage
         {
-            get { return ResolveLanguage(AppSettings.Language); }
+            get { return NormalizeLanguage(AppSettings.Language); }
             set
             {
                 string normalized = NormalizeLanguage(value);
-                if (string.Equals(SelectedLanguage, normalized, StringComparison.Ordinal))
+                if (string.Equals(CurrentLanguage, normalized, StringComparison.Ordinal))
                 {
                     return;
                 }
@@ -174,52 +181,33 @@ namespace DROPME.Services
             }
         }
 
-        public static string SelectedLanguage => NormalizeLanguage(AppSettings.Language);
-
-        public static string DetectedLanguage => ResolveLanguage(GetSystemLanguage());
-
-        public static bool IsAutomaticLanguageSelection =>
-            string.Equals(SelectedLanguage, AutomaticLanguage, StringComparison.Ordinal);
+        /// <summary>
+        /// Возвращает true только для поддерживаемых сохранённых значений ru/en.
+        /// Старое значение auto намеренно считается неподдерживаемым и мигрируется при загрузке настроек.
+        /// </summary>
+        public static bool IsSupportedLanguage(string language)
+        {
+            return string.Equals(language, RussianLanguage, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(language, EnglishLanguage, StringComparison.OrdinalIgnoreCase);
+        }
 
         /// <summary>
-        /// Нормализует настройку языка в auto, ru или en.
+        /// Нормализует конкретный поддерживаемый язык в ru или en.
         /// </summary>
         public static string NormalizeLanguage(string language)
         {
-            if (string.IsNullOrWhiteSpace(language) ||
-                string.Equals(language, AutomaticLanguage, StringComparison.OrdinalIgnoreCase))
-            {
-                return AutomaticLanguage;
-            }
-
             return string.Equals(language, RussianLanguage, StringComparison.OrdinalIgnoreCase)
                 ? RussianLanguage
                 : EnglishLanguage;
         }
 
-        /// <summary>
-        /// Преобразует режим auto в фактический язык интерфейса по CurrentUICulture Windows.
-        /// </summary>
-        public static string ResolveLanguage(string language)
-        {
-            string normalized = NormalizeLanguage(language);
-            if (string.Equals(normalized, AutomaticLanguage, StringComparison.Ordinal))
-            {
-                return string.Equals(GetSystemLanguage(), RussianLanguage, StringComparison.Ordinal)
-                    ? RussianLanguage
-                    : EnglishLanguage;
-            }
-
-            return normalized;
-        }
-
         public static bool IsRussianLanguage(string language)
         {
-            return string.Equals(ResolveLanguage(language), RussianLanguage, StringComparison.Ordinal);
+            return string.Equals(NormalizeLanguage(language), RussianLanguage, StringComparison.Ordinal);
         }
 
         /// <summary>
-        /// Возвращает локализованную строку по ключу для фактически используемого языка.
+        /// Возвращает локализованную строку по ключу для сохранённого языка приложения.
         /// </summary>
         public static string Text(string key)
         {
@@ -232,16 +220,11 @@ namespace DROPME.Services
             return IsRussianLanguage(language) ? "Русский" : "English";
         }
 
-        public static string SystemLanguageDisplayText()
-        {
-            return string.Format(Text("system_language"), LanguageDisplayName(DetectedLanguage));
-        }
-
         /// <summary>
-        /// Определяет поддерживаемый язык по системной UI culture текущего Windows-сеанса.
-        /// Русская culture выбирает ru, остальные culture используют en.
+        /// Определяет начальный поддерживаемый язык по системной UI culture Windows.
+        /// Метод используется только когда сохранённого языка ещё нет или мигрируется старое auto.
         /// </summary>
-        private static string GetSystemLanguage()
+        public static string DetectSystemLanguage()
         {
             return string.Equals(
                 CultureInfo.CurrentUICulture.TwoLetterISOLanguageName,

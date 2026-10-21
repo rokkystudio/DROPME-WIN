@@ -17,12 +17,14 @@ namespace DROPME.Services
         private static readonly string SettingsPath = Path.Combine(SettingsDirectory, "settings.ini");
 
         public static string Theme { get; set; } = "Light";
-        public static string Language { get; set; } = LocalizationService.AutomaticLanguage;
+        public static string Language { get; set; } = string.Empty;
         public static bool UseWebInterface { get; set; }
         public static bool DeviceServiceEnabled { get; set; } = true;
         public static string DeviceName { get; set; } = Environment.MachineName;
         public static string PublishedStorageRootIds { get; set; } = "profile";
         public static string CustomStorageRoots { get; set; } = string.Empty;
+        public static string IncomingDirectory { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        public static bool CreateIncomingDateFolders { get; set; } = true;
         public static string DeviceId { get; private set; } = string.Empty;
 
         /// <summary>
@@ -70,6 +72,14 @@ namespace DROPME.Services
                     {
                         CustomStorageRoots = value;
                     }
+                    else if (string.Equals(key, "IncomingDirectory", StringComparison.OrdinalIgnoreCase))
+                    {
+                        IncomingDirectory = value;
+                    }
+                    else if (string.Equals(key, "CreateIncomingDateFolders", StringComparison.OrdinalIgnoreCase))
+                    {
+                        CreateIncomingDateFolders = !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+                    }
                     else if (string.Equals(key, "DeviceId", StringComparison.OrdinalIgnoreCase))
                     {
                         DeviceId = value;
@@ -80,6 +90,21 @@ namespace DROPME.Services
             if (string.IsNullOrWhiteSpace(DeviceName))
             {
                 DeviceName = Environment.MachineName;
+            }
+
+            if (string.IsNullOrWhiteSpace(IncomingDirectory))
+            {
+                IncomingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            }
+
+            if (!LocalizationService.IsSupportedLanguage(Language))
+            {
+                Language = LocalizationService.DetectSystemLanguage();
+                Save();
+            }
+            else
+            {
+                Language = LocalizationService.NormalizeLanguage(Language);
             }
 
             if (!IsValidDeviceId(DeviceId))
@@ -104,6 +129,8 @@ namespace DROPME.Services
                 "DeviceName=" + DeviceName,
                 "PublishedStorageRootIds=" + PublishedStorageRootIds,
                 "CustomStorageRoots=" + CustomStorageRoots,
+                "IncomingDirectory=" + IncomingDirectory,
+                "CreateIncomingDateFolders=" + (CreateIncomingDateFolders ? "true" : "false"),
                 "DeviceId=" + DeviceId
             });
         }

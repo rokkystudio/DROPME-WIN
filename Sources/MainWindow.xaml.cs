@@ -366,7 +366,7 @@ namespace DROPME
         }
 
         /// <summary>
-        /// Подготавливает дневную папку входящих и открывает её через Windows shell.
+        /// Подготавливает активную директорию входящих файлов по текущим настройкам и открывает её через Windows shell.
         /// </summary>
         private void OpenIncomingFolder()
         {
@@ -453,17 +453,50 @@ namespace DROPME
             OpenIncomingFolder();
         }
 
+        /// <summary>
+        /// Открывает выбор базовой директории входящих файлов и сохраняет выбранный путь.
+        /// </summary>
+        private void BrowseIncomingDirectoryButton_OnClick(object sender, RoutedEventArgs e)
+        {
+            using Forms.FolderBrowserDialog dialog = new Forms.FolderBrowserDialog
+            {
+                Description = LocalizationService.Text("incoming_choose_directory"),
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = true,
+                SelectedPath = AppSettings.IncomingDirectory
+            };
+            if (dialog.ShowDialog() != Forms.DialogResult.OK ||
+                string.IsNullOrWhiteSpace(dialog.SelectedPath))
+            {
+                return;
+            }
+
+            AppSettings.IncomingDirectory = Path.GetFullPath(dialog.SelectedPath);
+            AppSettings.Save();
+            RefreshIncomingSettings();
+        }
+
+        /// <summary>
+        /// Сохраняет режим создания дневных подкаталогов для новых входящих файлов.
+        /// </summary>
+        private void IncomingDateFoldersCheckBox_OnClick(object sender, RoutedEventArgs e)
+        {
+            AppSettings.CreateIncomingDateFolders = IncomingDateFoldersCheckBox.IsChecked == true;
+            AppSettings.Save();
+            RefreshIncomingSettings();
+        }
+
         private void AutostartCheckBox_OnClick(object sender, RoutedEventArgs e)
         {
             SetAutostart(AutostartCheckBox.IsChecked == true);
         }
 
         /// <summary>
-        /// Открывает меню выбора системного, английского или русского языка с флагами.
+        /// Переключает интерфейс между двумя поддерживаемыми языками без popup-меню.
         /// </summary>
         private void LanguageButton_OnClick(object sender, RoutedEventArgs e)
         {
-            TitleBar.OpenLanguageMenu(WpfLanguageMenuService.CreateLanguageMenu());
+            WpfLanguageMenuService.ToggleLanguage();
         }
 
         private void ThemeButton_OnClick(object sender, RoutedEventArgs e)
@@ -486,27 +519,19 @@ namespace DROPME
         }
 
         /// <summary>
-        /// Handles a left-button tray double click: with no clients opens incoming files, with one
-        /// client opens that device, and with multiple clients leaves selection to the tray menu.
+        /// Переключает видимость основного окна по двойному клику левой кнопкой по системному трею.
         /// </summary>
         private void NotifyIcon_OnLeftDoubleClick(object? sender, EventArgs e)
         {
             Dispatcher.Invoke(delegate
             {
-                List<AndroidClient> clients = clientManager_.ListClients();
-                if (clients.Count == 0)
+                if (IsVisible)
                 {
-                    OpenIncomingFolder();
+                    Hide();
                     return;
                 }
 
-                if (clients.Count == 1)
-                {
-                    OpenClientDrive(clients[0].ClientId);
-                    return;
-                }
-
-                Log.Info("Multiple clients are connected; tray double click keeps the devices window hidden");
+                ShowMainWindow();
             });
         }
 
@@ -539,6 +564,10 @@ namespace DROPME
                 ? LocalizationService.Text("status_running")
                 : LocalizationService.Text("status_stopped");
             MyStorageTitleText.Text = LocalizationService.Text("my_storage");
+            IncomingFilesTitleText.Text = LocalizationService.Text("incoming_files");
+            BrowseIncomingDirectoryButton.Content = LocalizationService.Text("incoming_choose_directory");
+            OpenIncomingButton.Content = LocalizationService.Text("open_incoming");
+            IncomingDateFoldersCheckBox.Content = LocalizationService.Text("incoming_date_folders");
             WinFspTitleText.Text = "WinFsp";
             DevicesTitleText.Text = LocalizationService.Text("devices");
             NetworkDevicesTitleText.Text = LocalizationService.Text("network_devices");
@@ -547,10 +576,11 @@ namespace DROPME
             BlockedDevicesTitleText.Text = LocalizationService.Text("blocked_devices");
             SaveDeviceNameButton.Content = LocalizationService.Text("save_device_name");
             DeviceServiceCheckBox.Content = LocalizationService.Text("device_service_enabled");
-            OpenIncomingButton.Content = LocalizationService.Text("open_incoming");
             UpdateAutostartCheckBox();
+            RefreshIncomingSettings();
             UpdateUseWebInterfaceCheckBox();
             UpdateHeaderButtons();
+            RenderMyStorages();
             RenderNetworkDevices();
             RefreshTrustLists();
         }
@@ -585,6 +615,15 @@ namespace DROPME
         {
             AutostartCheckBox.Content = LocalizationService.Text("autostart");
             AutostartCheckBox.IsChecked = autoStart_.IsEnabled();
+        }
+
+        /// <summary>
+        /// Отображает выбранную директорию входящих файлов и текущий режим создания дневных подкаталогов.
+        /// </summary>
+        private void RefreshIncomingSettings()
+        {
+            IncomingDirectoryTextBox.Text = AppSettings.IncomingDirectory;
+            IncomingDateFoldersCheckBox.IsChecked = AppSettings.CreateIncomingDateFolders;
         }
 
         /// <summary>

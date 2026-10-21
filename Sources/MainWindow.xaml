@@ -3,11 +3,12 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:neo="clr-namespace:NeoUI"
         xmlns:icons="clr-namespace:Icons"
+        xmlns:controls="clr-namespace:DROPME.Controls"
         Title="DROPME"
         Style="{StaticResource NeoResizableWindowStyle}"
         Width="760"
         Height="620"
-        MinWidth="640"
+        MinWidth="350"
         MinHeight="500"
         Background="{DynamicResource BorderBrush}"
         Closing="Window_OnClosing">
@@ -32,7 +33,10 @@
 
             <ScrollViewer Grid.Row="1"
                           VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="18">
+                <controls:MasonryPanel Margin="18"
+                                       MinColumnWidth="290"
+                                       ColumnGap="14"
+                                       RowGap="14">
                     <Border Padding="14"
                             Background="{DynamicResource RaisedSurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
@@ -90,16 +94,10 @@
                                           Click="AutostartCheckBox_OnClick" />
                             </WrapPanel>
 
-                            <Button x:Name="OpenIncomingButton"
-                                    Margin="0,10,0,0"
-                                    HorizontalAlignment="Left"
-                                    Style="{StaticResource ActionButtonStyle}"
-                                    Visibility="Collapsed"
-                                    Click="OpenIncomingButton_OnClick" />
                         </StackPanel>
                     </Border>
 
-                    <Border Margin="0,14,0,0"
+                    <Border
                             Padding="14"
                             Background="{DynamicResource RaisedSurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
@@ -129,7 +127,51 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Margin="0,14,0,0"
+                    <Border
+                            Padding="14"
+                            Background="{DynamicResource RaisedSurfaceBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10">
+                        <StackPanel>
+                            <TextBlock x:Name="IncomingFilesTitleText"
+                                       FontSize="15"
+                                       FontWeight="SemiBold" />
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox x:Name="IncomingDirectoryTextBox"
+                                         Grid.Column="0"
+                                         Height="36"
+                                         VerticalContentAlignment="Center"
+                                         IsReadOnly="True"
+                                         Style="{StaticResource NeoTextBoxStyle}" />
+
+                                <Button x:Name="BrowseIncomingDirectoryButton"
+                                        Grid.Column="1"
+                                        Margin="8,0,0,0"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        Click="BrowseIncomingDirectoryButton_OnClick" />
+                            </Grid>
+
+                            <CheckBox x:Name="IncomingDateFoldersCheckBox"
+                                      Margin="0,10,0,0"
+                                      Style="{StaticResource OptionCheckBoxStyle}"
+                                      Click="IncomingDateFoldersCheckBox_OnClick" />
+
+                            <Button x:Name="OpenIncomingButton"
+                                    Margin="0,10,0,0"
+                                    HorizontalAlignment="Left"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    Click="OpenIncomingButton_OnClick" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border
                             Padding="14"
                             Background="{DynamicResource RaisedSurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
@@ -152,7 +194,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Margin="0,14,0,0"
+                    <Border
                             Padding="14"
                             Background="{DynamicResource RaisedSurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
@@ -172,7 +214,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Margin="0,14,0,0"
+                    <Border
                             Padding="14"
                             Background="{DynamicResource RaisedSurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
@@ -188,7 +230,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Margin="0,14,0,18"
+                    <Border
                             Padding="14"
                             Background="{DynamicResource RaisedSurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
@@ -208,7 +250,7 @@
                             <StackPanel x:Name="BlockedDevicesPanel" />
                         </StackPanel>
                     </Border>
-                </StackPanel>
+                </controls:MasonryPanel>
             </ScrollViewer>
         </Grid>
     </Border>

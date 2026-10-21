@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using DROPME.Services;
 
 namespace DROPME.Utils
 {
@@ -9,7 +10,7 @@ namespace DROPME.Utils
     internal static class DesktopFolders
     {
         /// <summary>
-        /// Возвращает путь к папке входящих файлов для текущего времени.
+        /// Возвращает активную директорию входящих файлов по текущим настройкам и создаёт её.
         /// </summary>
         public static string EnsureIncomingFolder()
         {
@@ -17,14 +18,24 @@ namespace DROPME.Utils
         }
 
         /// <summary>
-        /// Возвращает путь к папке входящих файлов вида "DROPME yyyy-MM-dd" на рабочем столе и создаёт её.
+        /// Возвращает активную директорию входящих файлов для указанного локального времени.
+        /// При включённой группировке создаёт подкаталог "DROPME yyyy-MM-dd",
+        /// иначе использует выбранную директорию напрямую.
         /// </summary>
         public static string EnsureIncomingFolderForTime(DateTime localTime)
         {
-            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            string path = Path.Combine(desktop, "DROPME " + localTime.ToString("yyyy-MM-dd"));
+            string baseDirectory = AppSettings.IncomingDirectory;
+            if (string.IsNullOrWhiteSpace(baseDirectory))
+            {
+                baseDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            }
+
+            string path = AppSettings.CreateIncomingDateFolders
+                ? Path.Combine(baseDirectory, "DROPME " + localTime.ToString("yyyy-MM-dd"))
+                : baseDirectory;
+
             Directory.CreateDirectory(path);
-            return path;
+            return Path.GetFullPath(path);
         }
 
         /// <summary>

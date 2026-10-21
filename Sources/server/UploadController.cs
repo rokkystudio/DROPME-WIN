@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text.Encodings.Web;
@@ -11,17 +10,11 @@ using DROPME.Utils;
 namespace DROPME.Server
 {
     /// <summary>
-    /// Обрабатывает разрешённые Share upload endpoints DROPME и группирует последовательные передачи в дневные папки.
+    /// Обрабатывает разрешённые Share upload endpoints DROPME и сохраняет входящие файлы
+    /// в директорию, выбранную пользователем.
     /// </summary>
     internal sealed class UploadController
     {
-        private sealed class UploadBatchState
-        {
-            public string Folder { get; set; } = string.Empty;
-            public long LastActivityTimestamp { get; set; }
-        }
-
-        private static readonly TimeSpan UploadBatchReuseTimeout = TimeSpan.FromMinutes(1);
         private static readonly TimeSpan StaleStagingAge = TimeSpan.FromDays(1);
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
@@ -29,9 +22,6 @@ namespace DROPME.Server
         };
 
         private readonly DeviceAuthorizationService authorizationService_;
-        private readonly object uploadBatchesMutex_ = new object();
-        private readonly Dictionary<string, UploadBatchState> uploadBatches_ =
-            new Dictionary<string, UploadBatchState>(StringComparer.Ordinal);
 
         public UploadController(DeviceAuthorizationService authorizationService)
         {
@@ -137,7 +127,7 @@ namespace DROPME.Server
             string stagingPath = string.Empty;
             try
             {
-                string folder = ResolveIncomingFolder(request);
+                string folder = ResolveIncomingFolder();
                 CleanupStaleStagingFiles(folder);
                 string filePath = FileName.MakeUniquePath(folder, validation.SanitizedName);
                 stagingPath = Path.Combine(folder, ".dropme-" + Guid.NewGuid().ToString("N") + ".tmp");
@@ -309,47 +299,11 @@ namespace DROPME.Server
         }
 
         /// <summary>
-        /// Возвращает активную папку batch для remote IP либо создаёт новую и удаляет устаревшие batch-записи.
-        /// Время повторного использования измеряется монотонным Stopwatch.
+        /// Возвращает активную директорию входящих файлов по текущим пользовательским настройкам.
         /// </summary>
-        private string ResolveIncomingFolder(HttpRequest request)
+        private static string ResolveIncomingFolder()
         {
-            long now = Stopwatch.GetTimestamp();
-            long timeoutTicks = (long)(UploadBatchReuseTimeout.TotalSeconds * Stopwatch.Frequency);
-            string batchKey = string.IsNullOrEmpty(request.RemoteIp) ? "<unknown>" : request.RemoteIp;
-
-            lock (uploadBatchesMutex_)
-            {
-                List<string> expired = new List<string>();
-                foreach (KeyValuePair<string, UploadBatchState> pair in uploadBatches_)
-                {
-                    if (now - pair.Value.LastActivityTimestamp > timeoutTicks)
-                    {
-                        expired.Add(pair.Key);
-                    }
-                }
-
-                foreach (string key in expired)
-                {
-                    uploadBatches_.Remove(key);
-                }
-
-                if (uploadBatches_.TryGetValue(batchKey, out UploadBatchState? state))
-                {
-                    state.LastActivityTimestamp = now;
-                    return state.Folder;
-                }
-
-                string folder = DesktopFolders.EnsureIncomingFolderForTime(DateTime.Now);
-                uploadBatches_[batchKey] = new UploadBatchState
-                {
-                    Folder = folder,
-                    LastActivityTimestamp = now
-                };
-
-                Log.Info("Upload batch started for " + batchKey + " in folder " + folder);
-                return folder;
-            }
+            return DesktopFolders.EnsureIncomingFolder();
         }
 
         private static Dictionary<string, string> ParseQuery(string query)
