@@ -116,7 +116,7 @@
                                            FontSize="15"
                                            FontWeight="SemiBold" />
 
-                                <neo:NeoIconButton x:Name="AddStorageRootButton"
+                                <neo:NeoIconAction x:Name="AddStorageRootButton"
                                                    Grid.Column="1"
                                                    Icon="{x:Static icons:MaterialSymbols.Add}"
                                                    Click="AddStorageRootButton_OnClick" />
