@@ -11,7 +11,8 @@ using DROPME.Clients;
 using DROPME.Server;
 using DROPME.Services;
 using DROPME.Utils;
-using FlagsPack;
+using FlagCatalog = Flags.Flags;
+using Icons;
 using NeoUI;
 using Forms = System.Windows.Forms;
 
@@ -572,7 +573,7 @@ namespace DROPME
             TitleBar.CloseToolTip = LocalizationService.Text("tooltip_close");
 
             TitleBar.LanguageIconSource =
-                CountryFlags.Load(WpfLanguageMenuService.GetCurrentLanguageFlagCountryCode());
+                FlagCatalog.GetFlag(WpfLanguageMenuService.GetCurrentLanguageFlagCountryCode());
 
             string themePath = NeoThemePalettes.IsDarkTheme(ThemeService.CurrentTheme)
                 ? NeoAssetPaths.ThemeDark
@@ -655,7 +656,7 @@ namespace DROPME
                     NeoIconButton remove = new NeoIconButton
                     {
                         Tag = root.Id,
-                        Icon = NeoIcons.Remove,
+                        Icon = MaterialSymbols.Close,
                         Margin = new Thickness(8, 0, 0, 0)
                     };
                     remove.Click += RemoveStorageRootButton_OnClick;

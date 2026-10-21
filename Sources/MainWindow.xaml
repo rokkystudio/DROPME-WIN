@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:neo="clr-namespace:NeoUI"
+        xmlns:icons="clr-namespace:Icons"
         Title="DROPME"
         Style="{StaticResource NeoResizableWindowStyle}"
         Width="760"
@@ -119,7 +120,7 @@
 
                                 <neo:NeoIconButton x:Name="AddStorageRootButton"
                                                    Grid.Column="1"
-                                                   Icon="{x:Static neo:NeoIcons.Add}"
+                                                   Icon="{x:Static icons:MaterialSymbols.Add}"
                                                    Click="AddStorageRootButton_OnClick" />
                             </Grid>
 

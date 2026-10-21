@@ -39,9 +39,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\Shared\FlagsPack\CountryFlags.cs" Link="Shared\FlagsPack\CountryFlags.cs" />
+    <Compile Include="..\Shared\Flags\Flags.cs" Link="Shared\Flags\Flags.cs" />
+    <Compile Include="..\Shared\Icons\MaterialSymbols.cs" Link="Shared\Icons\MaterialSymbols.cs" />
+    <Compile Include="..\Shared\Icons\MaterialSymbols.Generated.cs" Link="Shared\Icons\MaterialSymbols.Generated.cs" />
     <Compile Include="..\Shared\NeoUI\NeoThemePalette.cs" Link="Shared\NeoUI\NeoThemePalette.cs" />
-    <Compile Include="..\Shared\NeoUI\NeoIcons.cs" Link="Shared\NeoUI\NeoIcons.cs" />
     <Compile Include="..\Shared\NeoUI\NeoIconButton.cs" Link="Shared\NeoUI\NeoIconButton.cs" />
     <Compile Include="..\Shared\NeoUI\NeoAssetPaths.cs" Link="Shared\NeoUI\NeoAssetPaths.cs" />
     <Compile Include="..\Shared\NeoUI\NeoAssetService.cs" Link="Shared\NeoUI\NeoAssetService.cs" />
@@ -64,8 +65,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="..\Shared\FlagsPack\Assets\**\*.png">
-      <Link>Shared\FlagsPack\Assets\%(Filename)%(Extension)</Link>
+    <Resource Include="..\Shared\Flags\Assets\**\*.png">
+      <Link>Shared\Flags\Assets\%(Filename)%(Extension)</Link>
     </Resource>
     <Resource Include="..\Shared\NeoUI\Assets\**\*.png">
       <Link>Shared\NeoUI\Assets\%(Filename)%(Extension)</Link>
