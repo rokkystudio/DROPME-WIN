@@ -19,14 +19,17 @@ namespace DROPME.Devices
             clientManager_ = clientManager;
         }
 
-        public AndroidClient Connect(RemoteDevice device, Action? authorizationGranted = null)
+        public AndroidClient Connect(
+            RemoteDevice device,
+            CancellationToken cancellationToken,
+            Action? authorizationGranted = null)
         {
             if (!device.FileAccessAvailable || device.FilePort <= 0)
             {
                 throw new InvalidOperationException("Remote device does not provide file access");
             }
 
-            Authorize(device);
+            Authorize(device, cancellationToken);
             authorizationGranted?.Invoke();
 
             string clientId = "remote-" + device.DeviceId;
@@ -60,7 +63,7 @@ namespace DROPME.Devices
             return client;
         }
 
-        private static void Authorize(RemoteDevice device)
+        private static void Authorize(RemoteDevice device, CancellationToken cancellationToken)
         {
             using HttpClient client = new HttpClient
             {
@@ -73,7 +76,7 @@ namespace DROPME.Devices
             request.Headers.TryAddWithoutValidation("X-DROPME-Device-Name", AppSettings.DeviceName);
             request.Content = new ByteArrayContent(Array.Empty<byte>());
 
-            using HttpResponseMessage response = client.Send(request, CancellationToken.None);
+            using HttpResponseMessage response = client.Send(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 throw new InvalidOperationException(

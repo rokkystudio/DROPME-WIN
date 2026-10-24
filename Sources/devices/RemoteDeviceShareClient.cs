@@ -5,6 +5,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Threading;
 using DROPME.Services;
 
 namespace DROPME.Devices
@@ -17,6 +18,7 @@ namespace DROPME.Devices
         public void Send(
             RemoteDevice device,
             IReadOnlyList<string> filePaths,
+            CancellationToken cancellationToken,
             Action? authorizationGranted = null)
         {
             if (!device.ShareAvailable)
@@ -28,7 +30,7 @@ namespace DROPME.Devices
                 return;
             }
 
-            Authorize(device, Path.GetFileName(filePaths[0]));
+            Authorize(device, Path.GetFileName(filePaths[0]), cancellationToken);
             authorizationGranted?.Invoke();
             foreach (string filePath in filePaths)
             {
@@ -36,7 +38,10 @@ namespace DROPME.Devices
             }
         }
 
-        private static void Authorize(RemoteDevice device, string itemName)
+        private static void Authorize(
+            RemoteDevice device,
+            string itemName,
+            CancellationToken cancellationToken)
         {
             using HttpClient client = CreateClient(TimeSpan.FromSeconds(65));
             string url =
@@ -47,7 +52,7 @@ namespace DROPME.Devices
 
             using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url);
             request.Content = new ByteArrayContent(Array.Empty<byte>());
-            using HttpResponseMessage response = client.Send(request);
+            using HttpResponseMessage response = client.Send(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 throw new InvalidOperationException(

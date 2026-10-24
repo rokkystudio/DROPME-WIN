@@ -187,7 +187,8 @@ namespace DROPME
                 LocalizationService.Text("device_connecting"),
                 device.DeviceName);
 
-            Window waitingDialog = CreateRemoteApprovalWaitingDialog(device.DeviceName);
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
+            Window waitingDialog = CreateRemoteApprovalWaitingDialog(device.DeviceName, cancellation);
             waitingDialog.Show();
             RemoteDeviceConnector connector = remoteDeviceConnector_;
             try
@@ -195,7 +196,8 @@ namespace DROPME
                 AndroidClient client = await Task.Run(() =>
                     connector.Connect(
                         device,
-                        () => Dispatcher.BeginInvoke(new Action(() => waitingDialog.Close()))));
+                        cancellation.Token,
+                        () => Dispatcher.BeginInvoke(new Action(() => CloseApprovalWaitingDialog(waitingDialog)))));
 
                 RefreshDevices();
                 RenderNetworkDevices();
@@ -204,6 +206,10 @@ namespace DROPME
                     device.DeviceName);
                 OpenClientDrive(client.ClientId);
             }
+            catch (OperationCanceledException)
+            {
+                NetworkScanStatusText.Text = LocalizationService.Text("device_operation_cancelled");
+            }
             catch (Exception exception)
             {
                 ShowNotification(exception.Message, System.Windows.Forms.ToolTipIcon.Error);
@@ -211,10 +217,7 @@ namespace DROPME
             }
             finally
             {
-                if (waitingDialog.IsVisible)
-                {
-                    waitingDialog.Close();
-                }
+                CloseApprovalWaitingDialog(waitingDialog);
             }
         }
 
@@ -240,18 +243,24 @@ namespace DROPME
                 LocalizationService.Text("share_sending"),
                 device.DeviceName);
 
-            Window waitingDialog = CreateRemoteApprovalWaitingDialog(device.DeviceName);
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
+            Window waitingDialog = CreateRemoteApprovalWaitingDialog(device.DeviceName, cancellation);
             waitingDialog.Show();
             try
             {
                 await Task.Run(() => remoteDeviceShareClient_.Send(
                     device,
                     fileNames,
-                    () => Dispatcher.BeginInvoke(new Action(() => waitingDialog.Close()))));
+                    cancellation.Token,
+                    () => Dispatcher.BeginInvoke(new Action(() => CloseApprovalWaitingDialog(waitingDialog)))));
 
                 NetworkScanStatusText.Text = string.Format(
                     LocalizationService.Text("share_sent"),
                     device.DeviceName);
+            }
+            catch (OperationCanceledException)
+            {
+                NetworkScanStatusText.Text = LocalizationService.Text("device_operation_cancelled");
             }
             catch (Exception exception)
             {
@@ -260,18 +269,17 @@ namespace DROPME
             }
             finally
             {
-                if (waitingDialog.IsVisible)
-                {
-                    waitingDialog.Close();
-                }
+                CloseApprovalWaitingDialog(waitingDialog);
             }
         }
 
         /// <summary>
-        /// Создаёт неблокирующее окно, явно показывающее, что удалённое устройство ожидает
-        /// пользовательского подтверждения подключения или передачи файлов.
+        /// Создаёт окно ожидания подтверждения. Кнопка отмены и системный крестик
+        /// отменяют сетевой запрос через переданный CancellationTokenSource.
         /// </summary>
-        private Window CreateRemoteApprovalWaitingDialog(string deviceName)
+        private Window CreateRemoteApprovalWaitingDialog(
+            string deviceName,
+            CancellationTokenSource cancellation)
         {
             StackPanel content = new StackPanel
             {
@@ -299,7 +307,17 @@ namespace DROPME
                 Height = 4
             });
 
-            return new Window
+            Button cancelButton = new Button
+            {
+                Content = LocalizationService.Text("cancel"),
+                Style = (Style)FindResource("ActionButtonStyle"),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 14, 0, 0),
+                MinWidth = 96
+            };
+            content.Children.Add(cancelButton);
+
+            Window dialog = new Window
             {
                 Owner = this,
                 Title = "DROPME",
@@ -311,6 +329,37 @@ namespace DROPME
                 Content = content,
                 Background = (Brush)Application.Current.Resources["BackgroundBrush"]
             };
+
+            cancelButton.Click += (_, _) =>
+            {
+                cancellation.Cancel();
+                CloseApprovalWaitingDialog(dialog);
+            };
+            dialog.Closing += (_, _) =>
+            {
+                if (dialog.Tag is true)
+                {
+                    return;
+                }
+
+                cancellation.Cancel();
+                dialog.Tag = true;
+            };
+            return dialog;
+        }
+
+        /// <summary>
+        /// Закрывает окно ожидания программно, не инициируя отмену уже разрешённой операции.
+        /// </summary>
+        private static void CloseApprovalWaitingDialog(Window dialog)
+        {
+            if (!dialog.IsVisible)
+            {
+                return;
+            }
+
+            dialog.Tag = true;
+            dialog.Close();
         }
         /// <summary>
         /// Показывает кнопку сохранения только когда введённое имя отличается от сохранённого.
