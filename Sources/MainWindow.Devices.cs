@@ -100,26 +100,31 @@ namespace DROPME
             foreach (RemoteDevice device in remoteDevices_)
             {
                 Border card = CreateDeviceCard();
-                Grid grid = new Grid();
-                grid.ColumnDefinitions.Add(new ColumnDefinition());
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                StackPanel content = new StackPanel();
 
-                StackPanel details = new StackPanel();
-                details.Children.Add(new TextBlock
+                content.Children.Add(new TextBlock
                 {
                     Text = device.DeviceName.Length > 0 ? device.DeviceName : device.Host,
                     FontWeight = FontWeights.SemiBold,
-                    FontSize = 13
+                    FontSize = 13,
+                    TextTrimming = TextTrimming.CharacterEllipsis
                 });
-                details.Children.Add(new TextBlock
+                content.Children.Add(new TextBlock
                 {
-                    Text = "IP: " + device.Host + "  •  ID: " + device.DeviceId,
+                    Text = "IP: " + device.Host,
                     Foreground = MutedBrush(),
                     Margin = new Thickness(0, 4, 0, 0),
+                    FontSize = 11
+                });
+                content.Children.Add(new TextBlock
+                {
+                    Text = "ID: " + device.DeviceId,
+                    Foreground = MutedBrush(),
+                    Margin = new Thickness(0, 2, 0, 0),
                     FontSize = 11,
                     TextWrapping = TextWrapping.Wrap
                 });
-                details.Children.Add(new TextBlock
+                content.Children.Add(new TextBlock
                 {
                     Text = device.DeviceType + "  •  " +
                            (device.FileAccessAvailable
@@ -127,14 +132,13 @@ namespace DROPME
                                : LocalizationService.Text("file_access_unavailable")),
                     Foreground = MutedBrush(),
                     Margin = new Thickness(0, 3, 0, 0),
-                    FontSize = 11
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap
                 });
-                grid.Children.Add(details);
 
-                StackPanel actions = new StackPanel
+                WrapPanel actions = new WrapPanel
                 {
-                    Orientation = Orientation.Horizontal,
-                    Margin = new Thickness(12, 0, 0, 0)
+                    Margin = new Thickness(0, 10, 0, -6)
                 };
 
                 bool connected = clientManager_.Contains(RemoteClientId(device.DeviceId));
@@ -142,6 +146,7 @@ namespace DROPME
                 {
                     Content = LocalizationService.Text(connected ? "device_open" : "device_connect"),
                     Style = (Style)FindResource("ActionButtonStyle"),
+                    Margin = new Thickness(0, 0, 8, 6),
                     IsEnabled = connected || device.FileAccessAvailable
                 };
                 RemoteDevice current = device;
@@ -152,16 +157,14 @@ namespace DROPME
                 {
                     Content = LocalizationService.Text("device_send_files"),
                     Style = (Style)FindResource("ActionButtonStyle"),
-                    Margin = new Thickness(8, 0, 0, 0),
+                    Margin = new Thickness(0, 0, 8, 6),
                     IsEnabled = device.ShareAvailable
                 };
                 shareButton.Click += (_, _) => SendFilesToRemoteDevice(current);
                 actions.Children.Add(shareButton);
 
-                Grid.SetColumn(actions, 1);
-                grid.Children.Add(actions);
-
-                card.Child = grid;
+                content.Children.Add(actions);
+                card.Child = content;
                 NetworkDevicesPanel.Children.Add(card);
             }
         }

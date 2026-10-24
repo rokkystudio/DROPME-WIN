@@ -21,12 +21,23 @@ namespace DROPME.Devices
     {
         private const int MaxScanHosts = 4096;
         private const int MaxParallelRequests = 32;
+        private const int RememberedHostAttempts = 3;
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromMilliseconds(450);
 
+        private readonly object rememberedHostsMutex_ = new object();
+        private readonly HashSet<string> rememberedHosts_ = new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Выполняет один полный scan. IP, на которых устройство уже находилось в текущем сеансе,
+        /// проверяются несколько раз, но итоговый список содержит только устройства,
+        /// подтвердившие присутствие именно в текущем scan.
+        /// </summary>
         public IReadOnlyList<RemoteDevice> Scan(CancellationToken cancellationToken)
         {
             HashSet<string> localAddresses = new HashSet<string>(StringComparer.Ordinal);
             HashSet<string> candidates = BuildCandidates(localAddresses);
+            HashSet<string> rememberedHosts = SnapshotRememberedHosts();
+            candidates.UnionWith(rememberedHosts);
             ConcurrentDictionary<string, RemoteDevice> devices =
                 new ConcurrentDictionary<string, RemoteDevice>(StringComparer.Ordinal);
 
@@ -40,9 +51,11 @@ namespace DROPME.Devices
             {
                 Parallel.ForEach(candidates, options, host =>
                 {
-                    RemoteDevice? device = Probe(host, cancellationToken);
+                    int attempts = rememberedHosts.Contains(host) ? RememberedHostAttempts : 1;
+                    RemoteDevice? device = Probe(host, attempts, cancellationToken);
                     if (device != null)
                     {
+                        RememberHost(host);
                         devices[device.DeviceId] = device;
                     }
                 });
@@ -112,7 +125,28 @@ namespace DROPME.Devices
             return result;
         }
 
-        private static RemoteDevice? Probe(string host, CancellationToken cancellationToken)
+        /// <summary>
+        /// Проверяет один IP несколько раз. Повторы используются только для IP,
+        /// которые уже подтверждались в текущем сеансе приложения.
+        /// </summary>
+        private static RemoteDevice? Probe(
+            string host,
+            int attempts,
+            CancellationToken cancellationToken)
+        {
+            for (int attempt = 0; attempt < attempts; ++attempt)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                RemoteDevice? device = ProbeOnce(host, cancellationToken);
+                if (device != null)
+                {
+                    return device;
+                }
+            }
+            return null;
+        }
+
+        private static RemoteDevice? ProbeOnce(string host, CancellationToken cancellationToken)
         {
             using HttpClient client = new HttpClient
             {
@@ -168,6 +202,22 @@ namespace DROPME.Devices
                 exception is JsonException)
             {
                 return null;
+            }
+        }
+
+        private HashSet<string> SnapshotRememberedHosts()
+        {
+            lock (rememberedHostsMutex_)
+            {
+                return new HashSet<string>(rememberedHosts_, StringComparer.Ordinal);
+            }
+        }
+
+        private void RememberHost(string host)
+        {
+            lock (rememberedHostsMutex_)
+            {
+                rememberedHosts_.Add(host);
             }
         }
 
