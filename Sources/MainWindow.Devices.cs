@@ -19,8 +19,18 @@ namespace DROPME
 {
     public partial class MainWindow
     {
+        private const int RemoteDeviceMissesBeforeRemoval = 6;
+
+        private sealed class RemoteDeviceCacheEntry
+        {
+            public RemoteDevice Device { get; set; } = null!;
+            public int ConsecutiveMisses { get; set; }
+        }
+
         private readonly RemoteDeviceScanner remoteDeviceScanner_ = new RemoteDeviceScanner();
         private readonly RemoteDeviceShareClient remoteDeviceShareClient_ = new RemoteDeviceShareClient();
+        private readonly Dictionary<string, RemoteDeviceCacheEntry> remoteDeviceCache_ =
+            new Dictionary<string, RemoteDeviceCacheEntry>(StringComparer.Ordinal);
         private RemoteDeviceConnector? remoteDeviceConnector_;
         private List<RemoteDevice> remoteDevices_ = new List<RemoteDevice>();
         private CancellationTokenSource? remoteScanCancellation_;
@@ -76,13 +86,67 @@ namespace DROPME
                             return;
                         }
 
-                        remoteDevices_ = task.Result.ToList();
+                        ApplyRemoteScanResult(task.Result);
                         NetworkScanStatusText.Text = string.Format(
                             LocalizationService.Text("network_devices_found"),
                             remoteDevices_.Count);
                         RenderNetworkDevices();
                     });
                 }, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Обновляет session-кэш устройств по результату полного scan.
+        /// Найденные устройства обновляются сразу, временно пропавшие сохраняются до нескольких
+        /// последовательных неудачных проходов, чтобы единичный timeout не вызывал мерцание UI.
+        /// </summary>
+        private void ApplyRemoteScanResult(IReadOnlyList<RemoteDevice> scannedDevices)
+        {
+            HashSet<string> seenDeviceIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (RemoteDevice device in scannedDevices)
+            {
+                seenDeviceIds.Add(device.DeviceId);
+                if (!remoteDeviceCache_.TryGetValue(device.DeviceId, out RemoteDeviceCacheEntry? entry))
+                {
+                    entry = new RemoteDeviceCacheEntry();
+                    remoteDeviceCache_[device.DeviceId] = entry;
+                }
+
+                entry.Device = device;
+                entry.ConsecutiveMisses = 0;
+            }
+
+            List<string> removeIds = new List<string>();
+            foreach (KeyValuePair<string, RemoteDeviceCacheEntry> pair in remoteDeviceCache_)
+            {
+                if (seenDeviceIds.Contains(pair.Key))
+                {
+                    continue;
+                }
+
+                if (clientManager_.Contains(RemoteClientId(pair.Key)))
+                {
+                    pair.Value.ConsecutiveMisses = 0;
+                    continue;
+                }
+
+                pair.Value.ConsecutiveMisses++;
+                if (pair.Value.ConsecutiveMisses >= RemoteDeviceMissesBeforeRemoval)
+                {
+                    removeIds.Add(pair.Key);
+                }
+            }
+
+            foreach (string deviceId in removeIds)
+            {
+                remoteDeviceCache_.Remove(deviceId);
+            }
+
+            remoteDevices_ = remoteDeviceCache_.Values
+                .Select(entry => entry.Device)
+                .OrderBy(device => device.DeviceName, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(device => device.DeviceId, StringComparer.Ordinal)
+                .ToList();
         }
 
         /// <summary>
