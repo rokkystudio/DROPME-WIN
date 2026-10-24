@@ -150,6 +150,16 @@ namespace DROPME.Server
         /// </summary>
         private void HandleConnectRequest(HttpRequest request, HttpResponse response)
         {
+            if (clientManager_.HasClientFromIp(request.RemoteIp))
+            {
+                UploadController.SetJson(response, 409, "Conflict", new
+                {
+                    accepted = false,
+                    error = "A DROPME client is already connected from this IP"
+                });
+                return;
+            }
+
             string body = Utf.Utf8ToString(request.Body);
 
             int protocolVersion = ExtractJsonInt(body, "protocolVersion", -1);

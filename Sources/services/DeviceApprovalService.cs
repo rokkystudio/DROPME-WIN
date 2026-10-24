@@ -39,16 +39,24 @@ namespace DROPME.Services
                 bool allowed = false;
                 bool remember = false;
 
+                Window? owner = Application.Current.MainWindow;
                 Window dialog = new Window
                 {
                     Title = "DROPME",
                     Width = 440,
                     SizeToContent = SizeToContent.Height,
                     ResizeMode = ResizeMode.NoResize,
-                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                    ShowInTaskbar = true,
+                    WindowStartupLocation = owner != null && owner.IsVisible
+                        ? WindowStartupLocation.CenterOwner
+                        : WindowStartupLocation.CenterScreen,
+                    ShowInTaskbar = false,
+                    Topmost = owner == null || !owner.IsVisible,
                     Background = (Brush)Application.Current.Resources["BackgroundBrush"]
                 };
+                if (owner != null && owner.IsVisible)
+                {
+                    dialog.Owner = owner;
+                }
 
                 StackPanel content = new StackPanel
                 {

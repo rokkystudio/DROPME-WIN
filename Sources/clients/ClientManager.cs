@@ -25,6 +25,25 @@ namespace DROPME.Clients
         }
 
         /// <summary>
+        /// Возвращает true, если с указанного IP уже зарегистрирован активный клиент.
+        /// Используется для ограничения одного логического DROPME-устройства на один IP.
+        /// </summary>
+        public bool HasClientFromIp(string remoteIp)
+        {
+            lock (mutex_)
+            {
+                foreach (AndroidClient client in clients_.Values)
+                {
+                    if (string.Equals(client.RemoteIp, remoteIp, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Помечает начало persistent session для клиента и обновляет монотонный timestamp активности.
         /// </summary>
         public bool MarkSessionStarted(string clientId)
