@@ -166,9 +166,10 @@ namespace DROPME
             }
         }
         /// <summary>
-        /// Открывает уже подключённое устройство или запрашивает у него разрешение и монтирует файловую сессию.
+        /// Открывает уже подключённое устройство или показывает окно ожидания подтверждения,
+        /// запрашивает разрешение и монтирует файловую сессию.
         /// </summary>
-        private void OpenOrConnectRemoteDevice(RemoteDevice device)
+        private async void OpenOrConnectRemoteDevice(RemoteDevice device)
         {
             string clientId = RemoteClientId(device.DeviceId);
             if (clientManager_.Contains(clientId))
@@ -186,35 +187,42 @@ namespace DROPME
                 LocalizationService.Text("device_connecting"),
                 device.DeviceName);
 
+            Window waitingDialog = CreateRemoteApprovalWaitingDialog(device.DeviceName);
+            waitingDialog.Show();
             RemoteDeviceConnector connector = remoteDeviceConnector_;
-            Task.Run(() => connector.Connect(device))
-                .ContinueWith(task =>
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        if (task.IsFaulted)
-                        {
-                            string message = task.Exception?.GetBaseException().Message
-                                ?? LocalizationService.Text("device_connect_failed");
-                            ShowNotification(message, System.Windows.Forms.ToolTipIcon.Error);
-                            NetworkScanStatusText.Text = LocalizationService.Text("device_connect_failed");
-                            return;
-                        }
+            try
+            {
+                AndroidClient client = await Task.Run(() =>
+                    connector.Connect(
+                        device,
+                        () => Dispatcher.BeginInvoke(new Action(() => waitingDialog.Close()))));
 
-                        RefreshDevices();
-                        RenderNetworkDevices();
-                        NetworkScanStatusText.Text = string.Format(
-                            LocalizationService.Text("device_connected"),
-                            device.DeviceName);
-                        OpenClientDrive(task.Result.ClientId);
-                    });
-                });
+                RefreshDevices();
+                RenderNetworkDevices();
+                NetworkScanStatusText.Text = string.Format(
+                    LocalizationService.Text("device_connected"),
+                    device.DeviceName);
+                OpenClientDrive(client.ClientId);
+            }
+            catch (Exception exception)
+            {
+                ShowNotification(exception.Message, System.Windows.Forms.ToolTipIcon.Error);
+                NetworkScanStatusText.Text = LocalizationService.Text("device_connect_failed");
+            }
+            finally
+            {
+                if (waitingDialog.IsVisible)
+                {
+                    waitingDialog.Close();
+                }
+            }
         }
 
         /// <summary>
-        /// Выбирает локальные файлы и отправляет их выбранному устройству короткой Share-сессией.
+        /// Выбирает локальные файлы, показывает ожидание подтверждения и после разрешения
+        /// отправляет выбранные файлы короткой Share-сессией.
         /// </summary>
-        private void SendFilesToRemoteDevice(RemoteDevice device)
+        private async void SendFilesToRemoteDevice(RemoteDevice device)
         {
             OpenFileDialog dialog = new OpenFileDialog
             {
@@ -232,25 +240,77 @@ namespace DROPME
                 LocalizationService.Text("share_sending"),
                 device.DeviceName);
 
-            Task.Run(() => remoteDeviceShareClient_.Send(device, fileNames))
-                .ContinueWith(task =>
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        if (task.IsFaulted)
-                        {
-                            string message = task.Exception?.GetBaseException().Message
-                                ?? LocalizationService.Text("share_send_failed");
-                            ShowNotification(message, System.Windows.Forms.ToolTipIcon.Error);
-                            NetworkScanStatusText.Text = LocalizationService.Text("share_send_failed");
-                            return;
-                        }
+            Window waitingDialog = CreateRemoteApprovalWaitingDialog(device.DeviceName);
+            waitingDialog.Show();
+            try
+            {
+                await Task.Run(() => remoteDeviceShareClient_.Send(
+                    device,
+                    fileNames,
+                    () => Dispatcher.BeginInvoke(new Action(() => waitingDialog.Close()))));
 
-                        NetworkScanStatusText.Text = string.Format(
-                            LocalizationService.Text("share_sent"),
-                            device.DeviceName);
-                    });
-                });
+                NetworkScanStatusText.Text = string.Format(
+                    LocalizationService.Text("share_sent"),
+                    device.DeviceName);
+            }
+            catch (Exception exception)
+            {
+                ShowNotification(exception.Message, System.Windows.Forms.ToolTipIcon.Error);
+                NetworkScanStatusText.Text = LocalizationService.Text("share_send_failed");
+            }
+            finally
+            {
+                if (waitingDialog.IsVisible)
+                {
+                    waitingDialog.Close();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Создаёт неблокирующее окно, явно показывающее, что удалённое устройство ожидает
+        /// пользовательского подтверждения подключения или передачи файлов.
+        /// </summary>
+        private Window CreateRemoteApprovalWaitingDialog(string deviceName)
+        {
+            StackPanel content = new StackPanel
+            {
+                Margin = new Thickness(20)
+            };
+            content.Children.Add(new TextBlock
+            {
+                Text = string.Format(
+                    LocalizationService.Text("device_waiting_approval"),
+                    deviceName),
+                FontSize = 16,
+                FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap
+            });
+            content.Children.Add(new TextBlock
+            {
+                Text = LocalizationService.Text("device_waiting_approval_hint"),
+                Margin = new Thickness(0, 8, 0, 14),
+                Foreground = (Brush)Application.Current.Resources["MutedTextBrush"],
+                TextWrapping = TextWrapping.Wrap
+            });
+            content.Children.Add(new ProgressBar
+            {
+                IsIndeterminate = true,
+                Height = 4
+            });
+
+            return new Window
+            {
+                Owner = this,
+                Title = "DROPME",
+                Width = 390,
+                SizeToContent = SizeToContent.Height,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ShowInTaskbar = false,
+                Content = content,
+                Background = (Brush)Application.Current.Resources["BackgroundBrush"]
+            };
         }
         /// <summary>
         /// Показывает кнопку сохранения только когда введённое имя отличается от сохранённого.

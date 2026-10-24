@@ -14,7 +14,10 @@ namespace DROPME.Devices
     /// </summary>
     internal sealed class RemoteDeviceShareClient
     {
-        public void Send(RemoteDevice device, IReadOnlyList<string> filePaths)
+        public void Send(
+            RemoteDevice device,
+            IReadOnlyList<string> filePaths,
+            Action? authorizationGranted = null)
         {
             if (!device.ShareAvailable)
             {
@@ -26,6 +29,7 @@ namespace DROPME.Devices
             }
 
             Authorize(device, Path.GetFileName(filePaths[0]));
+            authorizationGranted?.Invoke();
             foreach (string filePath in filePaths)
             {
                 SendFile(device, filePath);
@@ -47,7 +51,9 @@ namespace DROPME.Devices
             if (!response.IsSuccessStatusCode)
             {
                 throw new InvalidOperationException(
-                    "Remote device denied Share: HTTP " + (int)response.StatusCode);
+                    response.StatusCode == System.Net.HttpStatusCode.Forbidden
+                        ? LocalizationService.Text("device_permission_denied")
+                        : "Remote device denied Share: HTTP " + (int)response.StatusCode);
             }
         }
 

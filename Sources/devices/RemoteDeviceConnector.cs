@@ -19,7 +19,7 @@ namespace DROPME.Devices
             clientManager_ = clientManager;
         }
 
-        public AndroidClient Connect(RemoteDevice device)
+        public AndroidClient Connect(RemoteDevice device, Action? authorizationGranted = null)
         {
             if (!device.FileAccessAvailable || device.FilePort <= 0)
             {
@@ -27,6 +27,7 @@ namespace DROPME.Devices
             }
 
             Authorize(device);
+            authorizationGranted?.Invoke();
 
             string clientId = "remote-" + device.DeviceId;
             AndroidClient? previous = clientManager_.RemoveClient(clientId);
@@ -76,7 +77,9 @@ namespace DROPME.Devices
             if (!response.IsSuccessStatusCode)
             {
                 throw new InvalidOperationException(
-                    "Remote device denied file access: HTTP " + (int)response.StatusCode);
+                    response.StatusCode == System.Net.HttpStatusCode.Forbidden
+                        ? LocalizationService.Text("device_permission_denied")
+                        : "Remote device denied file access: HTTP " + (int)response.StatusCode);
             }
         }
     }
