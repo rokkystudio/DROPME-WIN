@@ -51,6 +51,11 @@ namespace DROPME.Services
             Load();
         }
 
+        /// <summary>
+        /// Возвращает эффективное решение для указанной операции.
+        /// Полный доступ к папкам включает возможность принимать входящие файлы,
+        /// но разрешение на приём файлов само по себе не даёт доступ к папкам.
+        /// </summary>
         public DeviceTrustDecision GetDecision(string deviceId, string purpose)
         {
             lock (mutex_)
@@ -60,7 +65,14 @@ namespace DROPME.Services
                     return DeviceTrustDecision.Unknown;
                 }
 
-                return purpose == "share" ? device.ShareDecision : device.FilesDecision;
+                if (purpose == "share")
+                {
+                    return device.FilesDecision == DeviceTrustDecision.Allowed
+                        ? DeviceTrustDecision.Allowed
+                        : device.ShareDecision;
+                }
+
+                return device.FilesDecision;
             }
         }
 
