@@ -567,6 +567,20 @@ namespace DROPME
                 });
                 details.Children.Add(new TextBlock
                 {
+                    Text = string.Format(
+                               LocalizationService.Text("trust_share_permission"),
+                               TrustDecisionText(device.ShareDecision)) +
+                           "  •  " +
+                           string.Format(
+                               LocalizationService.Text("trust_files_permission"),
+                               TrustDecisionText(device.FilesDecision)),
+                    Foreground = MutedBrush(),
+                    Margin = new Thickness(0, 2, 0, 0),
+                    FontSize = 10,
+                    TextWrapping = TextWrapping.Wrap
+                });
+                details.Children.Add(new TextBlock
+                {
                     Text = device.LastSeenUtc.ToLocalTime().ToString("g"),
                     Foreground = MutedBrush(),
                     Margin = new Thickness(0, 2, 0, 0),
@@ -578,7 +592,7 @@ namespace DROPME
                 {
                     Content = LocalizationService.Text(
                         replacementDecision == DeviceTrustDecision.Allowed
-                            ? "trust_allow"
+                            ? "trust_reset"
                             : "trust_block"),
                     Style = (Style)FindResource("ActionButtonStyle"),
                     Margin = new Thickness(12, 0, 0, 0)
@@ -586,11 +600,17 @@ namespace DROPME
                 KnownDevice current = device;
                 change.Click += (_, _) =>
                 {
-                    server_.TrustStore.Remember(
-                        current.DeviceId,
-                        current.DeviceName,
-                        current.LastIp,
-                        replacementDecision);
+                    if (replacementDecision == DeviceTrustDecision.Blocked)
+                    {
+                        server_.TrustStore.BlockAll(
+                            current.DeviceId,
+                            current.DeviceName,
+                            current.LastIp);
+                    }
+                    else
+                    {
+                        server_.TrustStore.ClearDecisions(current.DeviceId);
+                    }
                     RefreshTrustLists();
                 };
                 Grid.SetColumn(change, 1);
@@ -599,6 +619,16 @@ namespace DROPME
                 card.Child = grid;
                 panel.Children.Add(card);
             }
+        }
+
+        private static string TrustDecisionText(DeviceTrustDecision decision)
+        {
+            return LocalizationService.Text(
+                decision == DeviceTrustDecision.Allowed
+                    ? "trust_allowed"
+                    : decision == DeviceTrustDecision.Blocked
+                        ? "trust_blocked"
+                        : "trust_ask");
         }
 
         private static string GetPrimaryLocalIpv4()

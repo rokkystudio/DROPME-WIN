@@ -64,7 +64,7 @@ namespace DROPME.Services
                 return false;
             }
 
-            DeviceTrustDecision decision = trustStore_.GetDecision(deviceId);
+            DeviceTrustDecision decision = trustStore_.GetDecision(deviceId, purpose);
             if (decision == DeviceTrustDecision.Allowed)
             {
                 trustStore_.Touch(deviceId, deviceName, request.RemoteIp);
@@ -200,6 +200,7 @@ namespace DROPME.Services
                         deviceId,
                         deviceName,
                         remoteIp,
+                        purpose,
                         result.Allowed
                             ? DeviceTrustDecision.Allowed
                             : DeviceTrustDecision.Blocked);

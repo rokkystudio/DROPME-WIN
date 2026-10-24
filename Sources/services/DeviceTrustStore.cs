@@ -18,13 +18,22 @@ namespace DROPME.Services
         public string DeviceId { get; set; } = string.Empty;
         public string DeviceName { get; set; } = string.Empty;
         public string LastIp { get; set; } = string.Empty;
-        public DeviceTrustDecision Decision { get; set; }
+        public DeviceTrustDecision ShareDecision { get; set; }
+        public DeviceTrustDecision FilesDecision { get; set; }
         public DateTime LastSeenUtc { get; set; }
+
+        public DeviceTrustDecision AggregateDecision =>
+            ShareDecision == DeviceTrustDecision.Allowed || FilesDecision == DeviceTrustDecision.Allowed
+                ? DeviceTrustDecision.Allowed
+                : ShareDecision == DeviceTrustDecision.Blocked || FilesDecision == DeviceTrustDecision.Blocked
+                    ? DeviceTrustDecision.Blocked
+                    : DeviceTrustDecision.Unknown;
     }
 
     /// <summary>
-    /// Хранит постоянные решения по известным DROPME-устройствам, привязанные к opaque device ID.
-    /// Имя и IP сохраняются только как последние отображаемые значения.
+    /// Хранит постоянные решения отдельно для приёма файлов (share) и доступа к папкам (files).
+    /// Старое единое allowed-решение мигрирует в Unknown для обоих прав, а старое blocked
+    /// сохраняется как блокировка обоих прав.
     /// </summary>
     internal sealed class DeviceTrustStore
     {
@@ -42,13 +51,16 @@ namespace DROPME.Services
             Load();
         }
 
-        public DeviceTrustDecision GetDecision(string deviceId)
+        public DeviceTrustDecision GetDecision(string deviceId, string purpose)
         {
             lock (mutex_)
             {
-                return devices_.TryGetValue(deviceId, out KnownDevice? device)
-                    ? device.Decision
-                    : DeviceTrustDecision.Unknown;
+                if (!devices_.TryGetValue(deviceId, out KnownDevice? device))
+                {
+                    return DeviceTrustDecision.Unknown;
+                }
+
+                return purpose == "share" ? device.ShareDecision : device.FilesDecision;
             }
         }
 
@@ -56,6 +68,7 @@ namespace DROPME.Services
             string deviceId,
             string deviceName,
             string ip,
+            string purpose,
             DeviceTrustDecision decision)
         {
             if (decision == DeviceTrustDecision.Unknown)
@@ -65,14 +78,23 @@ namespace DROPME.Services
 
             lock (mutex_)
             {
-                devices_[deviceId] = new KnownDevice
+                if (!devices_.TryGetValue(deviceId, out KnownDevice? device))
                 {
-                    DeviceId = deviceId,
-                    DeviceName = deviceName,
-                    LastIp = ip,
-                    Decision = decision,
-                    LastSeenUtc = DateTime.UtcNow
-                };
+                    device = new KnownDevice { DeviceId = deviceId };
+                    devices_[deviceId] = device;
+                }
+
+                device.DeviceName = deviceName;
+                device.LastIp = ip;
+                device.LastSeenUtc = DateTime.UtcNow;
+                if (purpose == "share")
+                {
+                    device.ShareDecision = decision;
+                }
+                else
+                {
+                    device.FilesDecision = decision;
+                }
                 SaveLocked();
             }
         }
@@ -93,6 +115,30 @@ namespace DROPME.Services
             }
         }
 
+        public void BlockAll(string deviceId, string deviceName, string ip)
+        {
+            Remember(deviceId, deviceName, ip, "share", DeviceTrustDecision.Blocked);
+            Remember(deviceId, deviceName, ip, "files", DeviceTrustDecision.Blocked);
+        }
+
+        /// <summary>
+        /// Сбрасывает оба постоянных решения до Unknown, не выдавая ни одного разрешения.
+        /// </summary>
+        public void ClearDecisions(string deviceId)
+        {
+            lock (mutex_)
+            {
+                if (!devices_.TryGetValue(deviceId, out KnownDevice? device))
+                {
+                    return;
+                }
+
+                device.ShareDecision = DeviceTrustDecision.Unknown;
+                device.FilesDecision = DeviceTrustDecision.Unknown;
+                SaveLocked();
+            }
+        }
+
         public void Forget(string deviceId)
         {
             lock (mutex_)
@@ -109,7 +155,7 @@ namespace DROPME.Services
             lock (mutex_)
             {
                 return devices_.Values
-                    .Where(device => device.Decision == decision)
+                    .Where(device => device.AggregateDecision == decision)
                     .OrderByDescending(device => device.LastSeenUtc)
                     .Select(Clone)
                     .ToList();
@@ -126,10 +172,11 @@ namespace DROPME.Services
                     return;
                 }
 
+                bool migrated = false;
                 foreach (string line in File.ReadAllLines(StorePath))
                 {
                     string[] fields = line.Split('	');
-                    if (fields.Length != 5)
+                    if (fields.Length != 5 && fields.Length != 6)
                     {
                         continue;
                     }
@@ -140,32 +187,42 @@ namespace DROPME.Services
                         continue;
                     }
 
-                    DeviceTrustDecision decision = fields[3] == "allowed"
-                        ? DeviceTrustDecision.Allowed
-                        : fields[3] == "blocked"
+                    DeviceTrustDecision shareDecision;
+                    DeviceTrustDecision filesDecision;
+                    DateTime lastSeen;
+                    if (fields.Length == 5)
+                    {
+                        DeviceTrustDecision legacy = ParseDecision(fields[3]);
+                        shareDecision = legacy == DeviceTrustDecision.Blocked
                             ? DeviceTrustDecision.Blocked
                             : DeviceTrustDecision.Unknown;
-                    if (decision == DeviceTrustDecision.Unknown)
-                    {
-                        continue;
+                        filesDecision = legacy == DeviceTrustDecision.Blocked
+                            ? DeviceTrustDecision.Blocked
+                            : DeviceTrustDecision.Unknown;
+                        lastSeen = ParseDate(fields[4]);
+                        migrated = true;
                     }
-
-                    DateTime lastSeen = DateTime.TryParse(
-                        fields[4],
-                        CultureInfo.InvariantCulture,
-                        DateTimeStyles.RoundtripKind,
-                        out DateTime parsed)
-                        ? parsed
-                        : DateTime.MinValue;
+                    else
+                    {
+                        shareDecision = ParseDecision(fields[3]);
+                        filesDecision = ParseDecision(fields[4]);
+                        lastSeen = ParseDate(fields[5]);
+                    }
 
                     devices_[deviceId] = new KnownDevice
                     {
                         DeviceId = deviceId,
                         DeviceName = Unescape(fields[1]),
                         LastIp = Unescape(fields[2]),
-                        Decision = decision,
+                        ShareDecision = shareDecision,
+                        FilesDecision = filesDecision,
                         LastSeenUtc = lastSeen
                     };
+                }
+
+                if (migrated)
+                {
+                    SaveLocked();
                 }
             }
         }
@@ -184,28 +241,49 @@ namespace DROPME.Services
                     Escape(device.DeviceId) + "	" +
                     Escape(device.DeviceName) + "	" +
                     Escape(device.LastIp) + "	" +
-                    (device.Decision == DeviceTrustDecision.Allowed ? "allowed" : "blocked") + "	" +
+                    FormatDecision(device.ShareDecision) + "	" +
+                    FormatDecision(device.FilesDecision) + "	" +
                     device.LastSeenUtc.ToString("O", CultureInfo.InvariantCulture))
                 .ToArray();
             File.WriteAllLines(StorePath, lines);
         }
 
-        private static KnownDevice Clone(KnownDevice device)
-        {
-            return new KnownDevice
+        private static DeviceTrustDecision ParseDecision(string value) =>
+            value == "allowed"
+                ? DeviceTrustDecision.Allowed
+                : value == "blocked"
+                    ? DeviceTrustDecision.Blocked
+                    : DeviceTrustDecision.Unknown;
+
+        private static string FormatDecision(DeviceTrustDecision decision) =>
+            decision == DeviceTrustDecision.Allowed
+                ? "allowed"
+                : decision == DeviceTrustDecision.Blocked
+                    ? "blocked"
+                    : "unknown";
+
+        private static DateTime ParseDate(string value) =>
+            DateTime.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out DateTime parsed)
+                ? parsed
+                : DateTime.MinValue;
+
+        private static KnownDevice Clone(KnownDevice device) =>
+            new KnownDevice
             {
                 DeviceId = device.DeviceId,
                 DeviceName = device.DeviceName,
                 LastIp = device.LastIp,
-                Decision = device.Decision,
+                ShareDecision = device.ShareDecision,
+                FilesDecision = device.FilesDecision,
                 LastSeenUtc = device.LastSeenUtc
             };
-        }
 
-        private static string Escape(string value)
-        {
-            return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value));
-        }
+        private static string Escape(string value) =>
+            Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value));
 
         private static string Unescape(string value)
         {
@@ -218,6 +296,7 @@ namespace DROPME.Services
                 return string.Empty;
             }
         }
+
         private static bool IsValidDeviceId(string value)
         {
             if (value.Length != 32)

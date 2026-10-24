@@ -17,6 +17,17 @@ namespace DROPME.Server
     /// </summary>
     internal sealed class WifiDropServer : IDisposable
     {
+        internal sealed class IncomingTransferUpdate
+        {
+            public string TransferId { get; init; } = string.Empty;
+            public string FileName { get; init; } = string.Empty;
+            public long ReceivedBytes { get; init; }
+            public long TotalBytes { get; init; }
+            public bool Completed { get; init; }
+            public bool Failed { get; init; }
+        }
+
+        public event Action<IncomingTransferUpdate>? IncomingTransferChanged;
         private const int MaxHeaderSize = 64 * 1024;
         private const int ClientReceiveTimeoutMs = 120_000;
         private const int ClientSendTimeoutMs = 30_000;
@@ -202,13 +213,23 @@ namespace DROPME.Server
 
                 if (disposition == ControlRequestDisposition.NotHandled)
                 {
-                    if (!uploadController_.HandleRequest(request, response) &&
-                        !fileAccessController_.HandleRequest(request, response))
+                    bool uploadHandled = uploadController_.HandleRequest(request, response);
+                    if (!uploadHandled && !fileAccessController_.HandleRequest(request, response))
                     {
                         response.StatusCode = 404;
                         response.ReasonPhrase = "Not Found";
                         response.Headers["Content-Type"] = "text/plain; charset=utf-8";
                         response.Body = Encoding.UTF8.GetBytes("Not Found");
+                    }
+
+                    if (uploadHandled && request.IncomingTransferId.Length > 0)
+                    {
+                        ReportIncomingTransfer(
+                            request,
+                            request.BodyLength,
+                            request.BodyLength,
+                            completed: response.StatusCode >= 200 && response.StatusCode < 300,
+                            failed: response.StatusCode < 200 || response.StatusCode >= 300);
                     }
 
                     SendResponse(clientSocket, response);
@@ -256,7 +277,7 @@ namespace DROPME.Server
         /// Upload body потоково сохраняется во временный файл, остальные небольшие тела остаются в памяти.
         /// Разбор request line принимает произвольные whitespace-разделители и игнорирует дополнительные токены после HTTP version.
         /// </summary>
-        private static bool ReceiveHttpRequest(TcpClient clientSocket, HttpRequest request)
+        private bool ReceiveHttpRequest(TcpClient clientSocket, HttpRequest request)
         {
             NetworkStream stream = clientSocket.GetStream();
             using MemoryStream received = new MemoryStream();
@@ -318,6 +339,13 @@ namespace DROPME.Server
                 request.Query = string.Empty;
             }
 
+            if (string.Equals(request.Method, "PUT", StringComparison.Ordinal) &&
+                IsIncomingSharePath(request.Path))
+            {
+                request.IncomingTransferId = Guid.NewGuid().ToString("N");
+                request.IncomingTransferName = ReadQueryValue(request.Query, "name");
+            }
+
             for (int index = 1; index < lines.Length; ++index)
             {
                 int separator = lines[index].IndexOf(':');
@@ -342,6 +370,12 @@ namespace DROPME.Server
 
             if (isUploadRequest)
             {
+                if (IsIncomingSharePath(request.Path) &&
+                    !authorizationService_.Authorize(request, "share", request.IncomingTransferName, false))
+                {
+                    return false;
+                }
+
                 if (!request.Headers.TryGetValue("content-length", out string? uploadLengthText) ||
                     !long.TryParse(uploadLengthText, out long expectedBodySize) ||
                     expectedBodySize < 0)
@@ -471,7 +505,7 @@ namespace DROPME.Server
             }
         }
 
-        private static bool ReceiveUploadBody(
+        private bool ReceiveUploadBody(
             NetworkStream stream,
             byte[] initialBuffer,
             int bodyOffset,
@@ -500,11 +534,18 @@ namespace DROPME.Server
                     FileOptions.SequentialScan);
 
                 long receivedBodySize = 0;
+                int lastReportedPercent = -1;
+                ReportIncomingTransfer(request, 0, expectedBodySize, completed: false, failed: false);
                 if (initialBodySize > 0)
                 {
                     output.Write(initialBuffer, bodyOffset, initialBodySize);
                     hash.AppendData(initialBuffer, bodyOffset, initialBodySize);
                     receivedBodySize = initialBodySize;
+                    lastReportedPercent = ReportIncomingProgressIfChanged(
+                        request,
+                        receivedBodySize,
+                        expectedBodySize,
+                        lastReportedPercent);
                 }
 
                 while (receivedBodySize < expectedBodySize)
@@ -519,6 +560,11 @@ namespace DROPME.Server
                     output.Write(chunk, 0, count);
                     hash.AppendData(chunk, 0, count);
                     receivedBodySize += count;
+                    lastReportedPercent = ReportIncomingProgressIfChanged(
+                        request,
+                        receivedBodySize,
+                        expectedBodySize,
+                        lastReportedPercent);
                 }
 
                 output.Flush(true);
@@ -533,9 +579,91 @@ namespace DROPME.Server
                 exception is CryptographicException)
             {
                 Log.Warn("Failed to receive upload body: " + exception.Message);
+                ReportIncomingTransfer(
+                    request,
+                    request.BodyLength,
+                    expectedBodySize,
+                    completed: false,
+                    failed: true);
                 TryDeleteRequestBodyFile(tempPath);
                 return false;
             }
+        }
+
+        private int ReportIncomingProgressIfChanged(
+            HttpRequest request,
+            long receivedBytes,
+            long totalBytes,
+            int lastReportedPercent)
+        {
+            int percent = totalBytes <= 0
+                ? 100
+                : (int)Math.Min(100, receivedBytes * 100L / totalBytes);
+            if (percent == lastReportedPercent)
+            {
+                return lastReportedPercent;
+            }
+
+            ReportIncomingTransfer(
+                request,
+                receivedBytes,
+                totalBytes,
+                completed: false,
+                failed: false);
+            return percent;
+        }
+
+        private void ReportIncomingTransfer(
+            HttpRequest request,
+            long receivedBytes,
+            long totalBytes,
+            bool completed,
+            bool failed)
+        {
+            if (request.IncomingTransferId.Length == 0)
+            {
+                return;
+            }
+
+            IncomingTransferChanged?.Invoke(new IncomingTransferUpdate
+            {
+                TransferId = request.IncomingTransferId,
+                FileName = request.IncomingTransferName,
+                ReceivedBytes = receivedBytes,
+                TotalBytes = totalBytes,
+                Completed = completed,
+                Failed = failed
+            });
+        }
+
+        private static bool IsIncomingSharePath(string path)
+        {
+            return string.Equals(path, "/dropme/upload", StringComparison.Ordinal) ||
+                   string.Equals(path, "/wifidrop/upload", StringComparison.Ordinal);
+        }
+
+        private static string ReadQueryValue(string query, string key)
+        {
+            foreach (string pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                int separator = pair.IndexOf('=');
+                string pairKey = separator >= 0 ? pair.Substring(0, separator) : pair;
+                if (!string.Equals(pairKey, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string value = separator >= 0 ? pair.Substring(separator + 1) : string.Empty;
+                try
+                {
+                    return Uri.UnescapeDataString(value.Replace('+', ' '));
+                }
+                catch (UriFormatException)
+                {
+                    return value;
+                }
+            }
+            return string.Empty;
         }
 
         private static void TryDeleteRequestBodyFile(string path)

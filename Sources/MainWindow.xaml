@@ -163,6 +163,20 @@
                                       Style="{StaticResource OptionCheckBoxStyle}"
                                       Click="IncomingDateFoldersCheckBox_OnClick" />
 
+                            <StackPanel x:Name="IncomingTransferPanel"
+                                        Margin="0,10,0,0"
+                                        Visibility="Collapsed">
+                                <TextBlock x:Name="IncomingTransferStatusText"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           TextWrapping="Wrap" />
+                                <ProgressBar x:Name="IncomingTransferProgressBar"
+                                             Margin="0,6,0,0"
+                                             Height="4"
+                                             Minimum="0"
+                                             Maximum="100" />
+                            </StackPanel>
+
                             <Button x:Name="OpenIncomingButton"
                                     Margin="0,10,0,0"
                                     HorizontalAlignment="Left"

@@ -60,6 +60,7 @@ namespace DROPME
 
             ThemeService.ThemeChanged += ThemeService_ThemeChanged;
             LocalizationService.LanguageChanged += LocalizationService_LanguageChanged;
+            server_.IncomingTransferChanged += Server_IncomingTransferChanged;
 
             WpfThemeService.Apply(Application.Current);
             ApplyLocalization();
@@ -618,6 +619,69 @@ namespace DROPME
         }
 
         /// <summary>
+        /// Обновляет прогресс входящего файла и показывает системное уведомление после
+        /// успешного сохранения и проверки целостности.
+        /// </summary>
+        private void Server_IncomingTransferChanged(WifiDropServer.IncomingTransferUpdate update)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                string fileName = string.IsNullOrWhiteSpace(update.FileName)
+                    ? LocalizationService.Text("incoming_files")
+                    : update.FileName;
+                IncomingTransferPanel.Visibility = Visibility.Visible;
+
+                if (update.Failed)
+                {
+                    IncomingTransferProgressBar.Value = 0;
+                    IncomingTransferStatusText.Text = string.Format(
+                        LocalizationService.Text("incoming_receive_failed"),
+                        fileName);
+                    ShowNotification(
+                        IncomingTransferStatusText.Text,
+                        Forms.ToolTipIcon.Error);
+                    return;
+                }
+
+                if (update.Completed)
+                {
+                    IncomingTransferProgressBar.Value = 100;
+                    IncomingTransferStatusText.Text = string.Format(
+                        LocalizationService.Text("incoming_saved"),
+                        fileName);
+                    ShowNotification(
+                        IncomingTransferStatusText.Text,
+                        Forms.ToolTipIcon.Info);
+                    return;
+                }
+
+                int percent = update.TotalBytes <= 0
+                    ? 0
+                    : (int)Math.Min(100, update.ReceivedBytes * 100L / update.TotalBytes);
+                IncomingTransferProgressBar.Value = percent;
+                IncomingTransferStatusText.Text = string.Format(
+                    LocalizationService.Text("incoming_receiving"),
+                    fileName,
+                    percent,
+                    FormatTransferBytes(update.ReceivedBytes),
+                    FormatTransferBytes(update.TotalBytes));
+            }));
+        }
+
+        private static string FormatTransferBytes(long bytes)
+        {
+            double value = Math.Max(0, bytes);
+            string[] units = { "B", "KB", "MB", "GB", "TB" };
+            int unit = 0;
+            while (value >= 1024 && unit < units.Length - 1)
+            {
+                value /= 1024;
+                unit++;
+            }
+            return value.ToString(unit == 0 ? "0" : "0.0") + " " + units[unit];
+        }
+
+        /// <summary>
         /// Отображает выбранную директорию входящих файлов и текущий режим создания дневных подкаталогов.
         /// </summary>
         private void RefreshIncomingSettings()
@@ -852,6 +916,7 @@ namespace DROPME
             refreshTimer_.Tick -= RefreshTimer_OnTick;
             ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
             LocalizationService.LanguageChanged -= LocalizationService_LanguageChanged;
+            server_.IncomingTransferChanged -= Server_IncomingTransferChanged;
 
             trayInteraction_.Dispose();
             notifyIcon_.Visible = false;

@@ -19,6 +19,8 @@ namespace DROPME.Server
         public long BodyLength { get; set; }
         public string BodySha256 { get; set; } = string.Empty;
         public string RemoteIp { get; set; } = string.Empty;
+        public string IncomingTransferId { get; set; } = string.Empty;
+        public string IncomingTransferName { get; set; } = string.Empty;
     }
 
     /// <summary>
