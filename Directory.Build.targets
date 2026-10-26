@@ -12,10 +12,14 @@
     <Error Condition="!Exists('$(PublishDir)$(TargetName).exe')"
            Text="Single-file publish did not create $(PublishDir)$(TargetName).exe." />
     <Message Text="Single-file EXE: $(PublishDir)$(TargetName).exe" Importance="high" />
-    <Message Text="Removing intermediate Debug/Release output for $(Platform)..." Importance="high" />
-    <RemoveDir Directories="$(MSBuildProjectDirectory)\Build\bin\$(Platform)\Debug;
-                            $(MSBuildProjectDirectory)\Build\bin\$(Platform)\Release;
-                            $(MSBuildProjectDirectory)\Build\obj\$(Platform)\Debug;
-                            $(MSBuildProjectDirectory)\Build\obj\$(Platform)\Release" />
+  </Target>
+
+  <Target Name="CleanupIntermediateOutputsAfterPublish"
+          AfterTargets="Publish"
+          Condition="'$(MSBuildProjectExtension)' == '.csproj'
+                  and '$(DesignTimeBuild)' != 'true'
+                  and '$(IsTemporaryTargetAssembly)' != 'true'">
+    <Message Text="Removing intermediate Build\bin and Build\obj after publish..." Importance="high" />
+    <RemoveDir Directories="$(MSBuildProjectDirectory)\Build\bin;$(MSBuildProjectDirectory)\Build\obj" />
   </Target>
 </Project>
