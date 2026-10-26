@@ -17,8 +17,13 @@ namespace DROPME
         private WifiDropServer? server_;
         private MainWindow? mainWindow_;
 
+        /// <summary>
+        /// Ограничивает хранящиеся WER crash reports, загружает настройки, запускает сервисы приложения и показывает главное окно при обычном запуске.
+        /// </summary>
         private void App_OnStartup(object sender, StartupEventArgs e)
         {
+            WindowsErrorReportRetention.Trim("DROPME.exe");
+
             AppSettings.Load();
             WpfThemeService.Apply(this);
 
