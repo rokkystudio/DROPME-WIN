@@ -36,6 +36,8 @@ namespace DROPME
         private CancellationTokenSource? remoteScanCancellation_;
         private DateTime nextRemoteScanUtc_ = DateTime.MinValue;
         private bool remoteScanInProgress_;
+        private bool remoteScanRestartPending_;
+        private bool networkChangesSubscribed_;
 
         /// <summary>
         /// Подготавливает редактируемую identity Windows-устройства, списки доверия и периодический поиск устройств.
@@ -47,6 +49,53 @@ namespace DROPME
             DeviceServiceCheckBox.IsChecked = AppSettings.DeviceServiceEnabled;
             RefreshLocalDeviceIdentity();
             RefreshTrustLists();
+            if (!networkChangesSubscribed_)
+            {
+                NetworkChange.NetworkAddressChanged += NetworkChange_OnChanged;
+                NetworkChange.NetworkAvailabilityChanged += NetworkChange_OnChanged;
+                networkChangesSubscribed_ = true;
+            }
+            StartRemoteScanIfDue(force: true);
+        }
+
+        /// <summary>
+        /// Реагирует на изменение интерфейсов Windows запуском прослушивания и пересканирования LAN.
+        /// </summary>
+        private void NetworkChange_OnChanged(object? sender, EventArgs e)
+        {
+            if (disposed_)
+            {
+                return;
+            }
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (disposed_)
+                {
+                    return;
+                }
+
+                if (AppSettings.DeviceServiceEnabled && server_.Start())
+                {
+                    ServerDescriptionText.Text = LocalizationService.Text("status_running");
+                }
+                RefreshLocalDeviceIdentity();
+                RestartRemoteScanAfterNetworkChange();
+            }));
+        }
+
+        /// <summary>
+        /// Прерывает scan прежнего интерфейса и начинает новый после завершения его задачи.
+        /// </summary>
+        private void RestartRemoteScanAfterNetworkChange()
+        {
+            nextRemoteScanUtc_ = DateTime.MinValue;
+            if (remoteScanInProgress_)
+            {
+                remoteScanRestartPending_ = true;
+                remoteScanCancellation_?.Cancel();
+                return;
+            }
             StartRemoteScanIfDue(force: true);
         }
 
@@ -75,6 +124,11 @@ namespace DROPME
                     Dispatcher.Invoke(() =>
                     {
                         remoteScanInProgress_ = false;
+                        if (remoteScanRestartPending_)
+                        {
+                            remoteScanRestartPending_ = false;
+                            StartRemoteScanIfDue(force: true);
+                        }
                         if (task.IsCanceled || token.IsCancellationRequested)
                         {
                             return;
@@ -470,7 +524,7 @@ namespace DROPME
         }
 
         /// <summary>
-        /// Включает или выключает входящую сетевую доступность Windows-устройства.
+        /// Сохраняет разрешение на входящие подключения, запускает сервер и оставляет включённый режим для повторных попыток при ошибке.
         /// </summary>
         private void DeviceServiceCheckBox_OnClick(object sender, RoutedEventArgs e)
         {
@@ -479,12 +533,7 @@ namespace DROPME
             {
                 if (!server_.Start())
                 {
-                    DeviceServiceCheckBox.IsChecked = false;
-                    AppSettings.DeviceServiceEnabled = false;
-                    AppSettings.Save();
                     ShowNotification(LocalizationService.Text("server_start_failed"), System.Windows.Forms.ToolTipIcon.Error);
-                    RefreshLocalDeviceIdentity();
-                    return;
                 }
             }
             else
@@ -631,32 +680,45 @@ namespace DROPME
                         : "trust_ask");
         }
 
+        /// <summary>
+        /// Возвращает IPv4 активного интерфейса с gateway или локальный IPv4 без gateway для LAN.
+        /// </summary>
         private static string GetPrimaryLocalIpv4()
         {
+            string fallback = string.Empty;
             foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
             {
                 if (networkInterface.OperationalStatus != OperationalStatus.Up ||
-                    networkInterface.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                    networkInterface.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                    networkInterface.NetworkInterfaceType == NetworkInterfaceType.Tunnel)
                 {
                     continue;
                 }
 
                 IPInterfaceProperties properties = networkInterface.GetIPProperties();
-                if (!properties.GatewayAddresses.Any(gateway =>
-                        gateway.Address.AddressFamily == AddressFamily.InterNetwork))
-                {
-                    continue;
-                }
-
+                bool hasIpv4Gateway = properties.GatewayAddresses.Any(gateway =>
+                    gateway.Address.AddressFamily == AddressFamily.InterNetwork);
                 foreach (UnicastIPAddressInformation address in properties.UnicastAddresses)
                 {
-                    if (address.Address.AddressFamily == AddressFamily.InterNetwork)
+                    byte[] bytes = address.Address.GetAddressBytes();
+                    if (address.Address.AddressFamily != AddressFamily.InterNetwork ||
+                        IPAddress.IsLoopback(address.Address) ||
+                        (bytes[0] == 169 && bytes[1] == 254))
+                    {
+                        continue;
+                    }
+
+                    if (hasIpv4Gateway)
                     {
                         return address.Address.ToString();
                     }
+                    if (fallback.Length == 0)
+                    {
+                        fallback = address.Address.ToString();
+                    }
                 }
             }
-            return string.Empty;
+            return fallback;
         }
 
         private static string RemoteClientId(string deviceId)
@@ -693,10 +755,16 @@ namespace DROPME
         }
 
         /// <summary>
-        /// Останавливает фоновый поиск перед закрытием окна.
+        /// Отменяет сканирование и освобождает обработчики изменения сетевых интерфейсов при закрытии окна.
         /// </summary>
         private void DisposeDeviceDiscovery()
         {
+            if (networkChangesSubscribed_)
+            {
+                NetworkChange.NetworkAddressChanged -= NetworkChange_OnChanged;
+                NetworkChange.NetworkAvailabilityChanged -= NetworkChange_OnChanged;
+                networkChangesSubscribed_ = false;
+            }
             remoteScanCancellation_?.Cancel();
             remoteScanCancellation_?.Dispose();
             remoteScanCancellation_ = null;

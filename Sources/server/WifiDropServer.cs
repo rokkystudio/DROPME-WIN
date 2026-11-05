@@ -62,12 +62,13 @@ namespace DROPME.Server
         public DeviceTrustStore TrustStore => authorizationService_.TrustStore;
 
         /// <summary>
-        /// Запускает TCP listener с exclusive address use, UDP discovery responder и maintenance loop.
+        /// Запускает TCP listener и maintenance loop, а также обеспечивает работу UDP discovery при повторных вызовах.
         /// </summary>
         public bool Start()
         {
             if (running_)
             {
+                discoveryResponder_.Start();
                 return true;
             }
 

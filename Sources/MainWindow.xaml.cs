@@ -32,6 +32,7 @@ namespace DROPME
         private bool closeApplication_;
         private bool disposed_;
         private string deviceMenuSignature_ = string.Empty;
+        private DateTime nextServerStartAttemptUtc_ = DateTime.MinValue;
 
         internal MainWindow(ClientManager clientManager, WifiDropServer server, AutoStart autoStart, bool serverStarted)
         {
@@ -82,11 +83,22 @@ namespace DROPME
             return icon ?? System.Drawing.SystemIcons.Application;
         }
 
+        /// <summary>
+        /// Обновляет UI, запускает поиск устройств и повторяет запуск включённого сервера после ошибки привязки.
+        /// </summary>
         private void RefreshTimer_OnTick(object? sender, EventArgs e)
         {
             RefreshDevices();
             RefreshLocalDeviceIdentity();
             StartRemoteScanIfDue();
+            if (AppSettings.DeviceServiceEnabled && DateTime.UtcNow >= nextServerStartAttemptUtc_)
+            {
+                nextServerStartAttemptUtc_ = DateTime.UtcNow.AddSeconds(5);
+                if (server_.Start())
+                {
+                    ServerDescriptionText.Text = LocalizationService.Text("status_running");
+                }
+            }
         }
 
         /// <summary>

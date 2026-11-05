@@ -42,12 +42,10 @@ namespace DROPME
 
             if (AppSettings.DeviceServiceEnabled && !serverStarted)
             {
-                Log.Error("Failed to start server");
+                Log.Error("Failed to start server; network change and periodic checks will retry");
                 mainWindow_.ShowNotification(
                     LocalizationService.Text("server_start_failed"),
                     System.Windows.Forms.ToolTipIcon.Error);
-                Shutdown(1);
-                return;
             }
 
             bool startHidden = e.Args.Any(argument =>
